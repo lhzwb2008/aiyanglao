@@ -1,0 +1,19 @@
+{
+  "name": "coze-knowledge-manager",
+  "version": "1.0.0",
+  "description": "Coze知识库管理系统 - 支持知识库和文件的增删改查",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "build": "cd client && npm run build",
+    "setup": "./scripts/install.sh",
+    "deploy": "./scripts/deploy.sh",
+    "start": "./start-production.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
