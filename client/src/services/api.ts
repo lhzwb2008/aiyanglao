@@ -1,135 +1,94 @@
 import axios from 'axios';
-import type { 
-  Dataset, 
-  Document, 
-  DatasetListResponse,
-  DocumentListResponse,
-  ApiResponse,
-  CreateDatasetRequest,
-  UploadDocumentRequest
-} from '../types';
 
 const api = axios.create({
   baseURL: '/api',
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  timeout: 300000, // 5min，抽取可能耗时较长
 });
 
-// 响应拦截器
 api.interceptors.response.use(
-  (response) => response.data,
+  (response) => response,
   (error) => {
-    const message = error.response?.data?.message || error.message || '请求失败';
-    return Promise.reject(new Error(message));
+    console.error('API Error:', error.response?.data || error.message);
+    return Promise.reject(error);
   }
 );
 
-// ==================== 知识库 API ====================
+// 知识图谱数据类型
+export interface GraphNode {
+  id: string;
+  name: string;
+  type: string;
+  description?: string;
+  sourceDocuments: string[];
+  weight: number;
+}
 
-/**
- * 获取知识库列表
- */
-export async function getDatasets(params?: {
-  name?: string;
-  format_type?: number;
-  page_num?: number;
-  page_size?: number;
-}): Promise<DatasetListResponse> {
-  return api.get('/datasets', { params });
+export interface GraphLink {
+  source: string | GraphNode;
+  target: string | GraphNode;
+  relation: string;
+  weight: number;
+  sourceDocuments: string[];
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  metadata: {
+    datasetId: string;
+    lastUpdated: string | null;
+    documentCount: number;
+    extractedDocIds: string[];
+  };
+  message?: string;
+}
+
+export interface ExtractionProgress {
+  status: 'idle' | 'running' | 'completed' | 'error';
+  totalDocuments: number;
+  processedDocuments: number;
+  currentDocument: string;
+  message: string;
+}
+
+export interface GraphStats {
+  nodeCount: number;
+  linkCount: number;
+  documentCount: number;
+  extractedDocCount: number;
+  lastUpdated: string;
+  nodeTypes: Record<string, number>;
+  topNodes: Array<{ name: string; type: string; weight: number }>;
 }
 
 /**
- * 创建知识库
+ * 获取知识图谱数据
  */
-export async function createDataset(data: CreateDatasetRequest): Promise<ApiResponse<Dataset>> {
-  return api.post('/datasets', data);
+export async function getGraphData(): Promise<GraphData> {
+  const { data } = await api.get('/graph/data');
+  return data;
 }
 
 /**
- * 修改知识库信息
+ * 触发知识抽取
  */
-export async function updateDataset(
-  id: string, 
-  data: Partial<CreateDatasetRequest>
-): Promise<ApiResponse<Dataset>> {
-  return api.put(`/datasets/${id}`, data);
+export async function triggerExtraction(forceRefresh = false): Promise<any> {
+  const { data } = await api.post('/graph/extract', { forceRefresh });
+  return data;
 }
 
 /**
- * 删除知识库
+ * 获取抽取进度
  */
-export async function deleteDataset(id: string): Promise<ApiResponse<void>> {
-  return api.delete(`/datasets/${id}`);
-}
-
-// ==================== 知识库文件 API ====================
-
-/**
- * 获取知识库文件列表
- */
-export async function getDocuments(
-  datasetId: string,
-  params?: { page?: number; size?: number }
-): Promise<DocumentListResponse> {
-  return api.get(`/datasets/${datasetId}/documents`, { params });
+export async function getExtractionProgress(): Promise<ExtractionProgress> {
+  const { data } = await api.get('/graph/progress');
+  return data;
 }
 
 /**
- * 上传文件到知识库
+ * 获取图谱统计信息
  */
-export async function uploadDocuments(
-  datasetId: string,
-  data: UploadDocumentRequest
-): Promise<ApiResponse<{ document_infos: Document[] }>> {
-  return api.post(`/datasets/${datasetId}/documents`, data);
-}
-
-/**
- * 删除知识库文件
- */
-export async function deleteDocument(id: string): Promise<ApiResponse<void>> {
-  return api.delete(`/documents/${id}`);
-}
-
-/**
- * 批量删除知识库文件
- */
-export async function batchDeleteDocuments(ids: string[]): Promise<ApiResponse<void>> {
-  return api.post('/documents/batch-delete', { document_ids: ids });
-}
-
-/**
- * 获取文件上传进度
- */
-export async function getDocumentProgress(
-  ids: string[]
-): Promise<ApiResponse<{ documents: Document[] }>> {
-  return api.get('/documents/progress', { 
-    params: { document_ids: ids.join(',') } 
-  });
-}
-
-/**
- * 将文件转换为 Base64
- */
-export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const result = reader.result as string;
-      // 移除 data:xxx;base64, 前缀
-      const base64 = result.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = (error) => reject(error);
-  });
-}
-
-/**
- * 获取文件扩展名
- */
-export function getFileExtension(filename: string): string {
-  return filename.split('.').pop()?.toLowerCase() || '';
+export async function getGraphStats(): Promise<GraphStats> {
+  const { data } = await api.get('/graph/stats');
+  return data;
 }

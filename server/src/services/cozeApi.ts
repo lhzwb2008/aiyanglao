@@ -1,29 +1,37 @@
 import axios, { AxiosInstance } from 'axios';
 import dotenv from 'dotenv';
 
-// 确保在模块加载时就加载环境变量
 dotenv.config();
 
 const COZE_API_BASE = 'https://api.coze.cn';
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 class CozeApiService {
   private client: AxiosInstance;
   private spaceId: string;
+  private datasetIds: string[];
+  private botId: string;
 
   constructor() {
     const token = process.env.COZE_API_TOKEN;
     this.spaceId = process.env.COZE_SPACE_ID || '';
+    this.botId = process.env.COZE_BOT_ID || '';
+
+    // 支持多知识库：逗号分隔
+    const idsRaw = process.env.KNOWLEDGE_DATASET_IDS || process.env.KNOWLEDGE_DATASET_ID || '';
+    this.datasetIds = idsRaw.split(',').map(s => s.trim()).filter(Boolean);
 
     if (!token) {
-      console.warn('⚠️ COZE_API_TOKEN is not set in environment variables');
-    } else {
-      console.log('✅ COZE_API_TOKEN loaded successfully');
+      console.warn('COZE_API_TOKEN is not set');
     }
-
-    if (!this.spaceId) {
-      console.warn('⚠️ COZE_SPACE_ID is not set in environment variables');
-    } else {
-      console.log('✅ COZE_SPACE_ID:', this.spaceId);
+    if (this.datasetIds.length === 0) {
+      console.warn('KNOWLEDGE_DATASET_IDS is not set');
+    }
+    if (!this.botId) {
+      console.warn('COZE_BOT_ID is not set');
     }
 
     this.client = axios.create({
@@ -31,11 +39,10 @@ class CozeApiService {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'Agw-Js-Conv': 'str'
-      }
+        'Agw-Js-Conv': 'str',
+      },
     });
 
-    // 响应拦截器
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
@@ -45,145 +52,88 @@ class CozeApiService {
     );
   }
 
+  /** 获取所有配置的知识库 ID 列表 */
+  getDatasetIds(): string[] {
+    return [...this.datasetIds];
+  }
+
   getSpaceId(): string {
     return this.spaceId;
   }
 
-  // ==================== 知识库操作 ====================
-
-  /**
-   * 获取知识库列表
-   */
-  async listDatasets(params?: {
-    name?: string;
-    format_type?: number;
-    page_num?: number;
-    page_size?: number;
-  }) {
-    const response = await this.client.get('/v1/datasets', {
-      params: {
-        space_id: this.spaceId,
-        ...params
-      }
-    });
-    return response.data;
-  }
-
-  /**
-   * 创建知识库
-   */
-  async createDataset(data: {
-    name: string;
-    description?: string;
-    format_type?: number; // 0: 文本类型, 2: 图片类型
-    icon?: string;
-  }) {
-    const response = await this.client.post('/v1/datasets', {
-      space_id: this.spaceId,
-      ...data
-    });
-    return response.data;
-  }
-
-  /**
-   * 修改知识库信息
-   */
-  async updateDataset(datasetId: string, data: {
-    name?: string;
-    description?: string;
-    icon?: string;
-  }) {
-    const response = await this.client.put(`/v1/datasets/${datasetId}`, data);
-    return response.data;
-  }
-
-  /**
-   * 删除知识库
-   */
-  async deleteDataset(datasetId: string) {
-    const response = await this.client.delete(`/v1/datasets/${datasetId}`);
-    return response.data;
-  }
-
-  // ==================== 知识库文件操作 ====================
-
-  /**
-   * 获取知识库文件列表
-   * 注意：这是 POST 请求，参数放在 body 中
-   */
-  async listDocuments(datasetId: string, params?: {
-    page?: number;
-    size?: number;
-  }) {
+  /** 列出指定知识库的文档 */
+  async listDocuments(datasetId: string, params?: { page?: number; size?: number }) {
     const response = await this.client.post('/open_api/knowledge/document/list', {
       dataset_id: datasetId,
       page: params?.page || 1,
-      size: params?.size || 100
+      size: params?.size || 100,
     });
     return response.data;
   }
 
-  /**
-   * 创建知识库文件（上传文件）
-   */
-  async createDocument(data: {
-    dataset_id: string;
-    document_bases: Array<{
-      name: string;
-      source_info: {
-        file_base64?: string;
-        file_type?: string;
-        web_url?: string;
-        document_source: number; // 0: 本地文件, 1: 在线网页, 5: 图片
-        source_file_id?: string;
-      };
-      update_rule?: {
-        update_interval?: number;
-        update_type?: number;
-      };
-    }>;
-    chunk_strategy?: {
-      chunk_type?: number;
-      separator?: string;
-      max_tokens?: number;
-      remove_extra_spaces?: boolean;
-      remove_urls_emails?: boolean;
-    };
-    format_type?: number;
-  }) {
-    const response = await this.client.post('/open_api/knowledge/document/create', data);
-    return response.data;
+  async downloadDocumentContent(webUrl: string): Promise<string> {
+    try {
+      const response = await axios.get(webUrl, {
+        timeout: 30000,
+        responseType: 'text',
+      });
+      return response.data;
+    } catch (err: any) {
+      console.error('Failed to download document:', err.message);
+      return '';
+    }
   }
 
-  /**
-   * 删除知识库文件
-   */
-  async deleteDocument(documentIds: string[]) {
-    const response = await this.client.post('/open_api/knowledge/document/delete', {
-      document_ids: documentIds
+  async callLLM(systemPrompt: string, userMessage: string): Promise<string> {
+    const chatResponse = await this.client.post('/v3/chat', {
+      bot_id: this.botId,
+      user_id: 'knowledge_graph_extractor',
+      stream: false,
+      additional_messages: [
+        {
+          role: 'user',
+          content: systemPrompt + '\n\n' + userMessage,
+          content_type: 'text',
+        },
+      ],
     });
-    return response.data;
-  }
 
-  /**
-   * 查看文件上传进度
-   * POST /v1/datasets/{dataset_id}/process
-   */
-  async getDocumentProgress(datasetId: string, documentIds: string[]) {
-    const response = await this.client.post(`/v1/datasets/${datasetId}/process`, {
-      document_ids: documentIds
+    const chatData = chatResponse.data?.data;
+    if (!chatData?.id || !chatData?.conversation_id) {
+      throw new Error('Failed to initiate chat: ' + JSON.stringify(chatResponse.data));
+    }
+
+    const chatId = chatData.id;
+    const conversationId = chatData.conversation_id;
+
+    let status = chatData.status;
+    let retries = 0;
+    const maxRetries = 60;
+
+    while (status !== 'completed' && status !== 'failed' && retries < maxRetries) {
+      await sleep(2000);
+      retries++;
+
+      const retrieveResponse = await this.client.get('/v3/chat/retrieve', {
+        params: { chat_id: chatId, conversation_id: conversationId },
+      });
+      status = retrieveResponse.data?.data?.status;
+    }
+
+    if (status !== 'completed') {
+      throw new Error('Chat did not complete, status: ' + status);
+    }
+
+    const messagesResponse = await this.client.get('/v3/chat/message/list', {
+      params: { chat_id: chatId, conversation_id: conversationId },
     });
-    return response.data;
-  }
 
-  /**
-   * 更新知识库文件（修改文件名等）
-   */
-  async updateDocument(documentId: string, data: {
-    name?: string;
-  }) {
-    const response = await this.client.put(`/open_api/knowledge/document/${documentId}`, data);
-    return response.data;
+    const messages = messagesResponse.data?.data || [];
+    const answerMessage = messages.find(
+      (msg: any) => msg.type === 'answer' && msg.role === 'assistant'
+    );
+
+    return answerMessage?.content || '';
   }
 }
 

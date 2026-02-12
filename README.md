@@ -1,66 +1,73 @@
-# 知识库文件管理
+# Knowledge Graph Explorer
 
-通过 URL 访问和管理 Coze 知识库中的文件。
+基于 Coze 知识库的知识图谱抽取与 3D 可视化展示工具。
 
-## 访问方式
+通过 LLM 大模型从知识库文档中自动抽取实体和关系，以酷炫的 3D 力导向图形式展示知识图谱。
 
-```
-http://{服务器地址}:{端口}/{知识库ID}
-```
+## 技术栈
 
-### 示例
+- **前端**: React + TypeScript + Tailwind CSS + react-force-graph-3d (Three.js)
+- **后端**: Express + TypeScript
+- **知识抽取**: Coze LLM API
+- **数据存储**: 本地 JSON 文件
 
-```
-http://192.168.1.100:5173/7588493565027942463
-```
+## 快速开始
 
-将 `7588493565027942463` 替换为你要管理的知识库 ID。
+### 1. 安装依赖
 
-### 获取知识库 ID
-
-在 Coze 平台打开知识库页面，URL 中 `knowledge` 后的数字即为知识库 ID：
-
-```
-https://www.coze.cn/space/xxx/knowledge/7588493565027942463
-                                        └── 知识库 ID ──┘
+```bash
+npm run install:all
 ```
 
-## iframe 嵌入
-
-```html
-<iframe 
-  src="http://192.168.1.100:5173/7588493565027942463" 
-  width="100%" 
-  height="600"
-  frameborder="0"
-></iframe>
-```
-
-## 功能说明
-
-| 功能 | 说明 |
-|------|------|
-| 查看文件 | 显示知识库中所有文件，支持搜索 |
-| 上传文件 | 支持本地文件（PDF/TXT/DOC/DOCX/MD）和在线网页 |
-| 删除文件 | 支持单个删除和批量删除 |
-
-## 部署配置
-
-### 环境变量
+### 2. 配置环境变量
 
 编辑 `server/.env`：
 
 ```env
-COZE_API_TOKEN=your_token    # Coze 个人访问令牌
-COZE_SPACE_ID=your_space_id  # 工作空间 ID
-PORT=3001                    # 后端端口
+COZE_API_TOKEN=your_coze_service_token
+COZE_SPACE_ID=your_space_id
+KNOWLEDGE_DATASET_ID=your_dataset_id
+LLM_MODEL_ID=doubao-1-5-pro-256k-250115
+PORT=3001
 ```
 
-### 启动服务
+### 3. 启动开发
 
 ```bash
-npm run install:all   # 安装依赖
-npm run dev           # 启动服务
+npm run dev
 ```
 
-服务启动后，前端默认运行在 `5173` 端口。
+访问 http://localhost:5173 即可查看知识图谱。
+
+## 功能
+
+- 从 Coze 知识库自动抽取文档中的实体和关系
+- 3D 力导向图展示，支持旋转、缩放、拖拽
+- 节点按类型着色（人物、技术、概念、组织等）
+- 节点悬浮信息展示
+- 点击节点聚焦并查看关联详情
+- 增量/全量抽取，结果缓存到本地
+- 实时抽取进度展示
+- 统计面板：类型分布、核心实体排行
+
+## 项目结构
+
+```
+├── client/          # React 前端
+│   └── src/
+│       ├── components/
+│       │   ├── KnowledgeGraph3D.tsx   # 3D 图谱组件
+│       │   └── StatsPanel.tsx         # 统计侧边栏
+│       ├── services/api.ts            # API 客户端
+│       ├── types/index.ts             # 类型定义
+│       └── App.tsx                    # 入口
+├── server/          # Express 后端
+│   ├── data/        # 图谱数据存储（自动生成）
+│   └── src/
+│       ├── routes/graph.ts            # 图谱 API
+│       └── services/
+│           ├── cozeApi.ts             # Coze API 服务
+│           ├── graphStore.ts          # 图谱本地存储
+│           └── knowledgeExtractor.ts  # 知识抽取引擎
+└── package.json
+```
