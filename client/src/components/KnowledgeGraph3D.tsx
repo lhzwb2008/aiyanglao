@@ -23,19 +23,6 @@ export default function KnowledgeGraph3D({
   const prevFocusRef = useRef<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
-  // 全局时钟，驱动所有动画
-  const timeRef = useRef(0);
-  useEffect(() => {
-    let running = true;
-    const tick = () => {
-      if (!running) return;
-      timeRef.current = performance.now() / 1000; // 秒
-      requestAnimationFrame(tick);
-    };
-    tick();
-    return () => { running = false; };
-  }, []);
-
   // 响应式尺寸
   useEffect(() => {
     const updateSize = () => {
@@ -53,7 +40,7 @@ export default function KnowledgeGraph3D({
 
   // 节点大小
   const getNodeSize = useCallback((node: GraphNode) => {
-    return Math.max(4, Math.min(16, node.weight * 1.8 + 3));
+    return Math.max(4, Math.min(14, node.weight * 1.5 + 3));
   }, []);
 
   // 活跃节点集合
@@ -72,159 +59,77 @@ export default function KnowledgeGraph3D({
     return connected;
   }, [activeNodeId, links]);
 
-  // ============ Canvas 绘制：动态科技感节点 ============
+  // ============ 轻量节点绘制 ============
   const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
     const size = getNodeSize(node);
     const color = getNodeColor(node.type);
     const isActive = node.id === activeNodeId;
     const isConnected = connectedNodes.has(node.id);
     const dimmed = activeNodeId && !isConnected;
-    const t = timeRef.current;
 
     const x = node.x || 0;
     const y = node.y || 0;
 
     ctx.save();
-    ctx.globalAlpha = dimmed ? 0.12 : 1;
+    ctx.globalAlpha = dimmed ? 0.15 : 1;
 
-    // === 呼吸光晕 ===
-    if (!dimmed) {
-      // 每个节点用自己的 hash 做相位偏移，避免同步闪烁
-      const phase = (node.id?.charCodeAt(0) || 0) * 0.37;
-      const breathe = 0.5 + 0.5 * Math.sin(t * 1.5 + phase);
-      const glowR = isActive ? size * 3.5 : size * (1.8 + breathe * 0.6);
-      const glowAlpha = isActive ? 0.35 : (0.08 + breathe * 0.12);
-
-      const gradient = ctx.createRadialGradient(x, y, size * 0.2, x, y, glowR);
-      gradient.addColorStop(0, color + Math.round(glowAlpha * 255).toString(16).padStart(2, '0'));
-      gradient.addColorStop(1, color + '00');
-      ctx.fillStyle = gradient;
+    // 选中节点加一圈光晕（只有选中时才画，开销极小）
+    if (isActive) {
       ctx.beginPath();
-      ctx.arc(x, y, glowR, 0, Math.PI * 2);
+      ctx.arc(x, y, size * 2, 0, Math.PI * 2);
+      ctx.fillStyle = color + '25';
       ctx.fill();
     }
 
-    // === 主体：发光圆形 ===
+    // 主体圆
     ctx.beginPath();
     ctx.arc(x, y, size, 0, Math.PI * 2);
-    // 径向渐变填充
-    const bodyGrad = ctx.createRadialGradient(x - size * 0.3, y - size * 0.3, size * 0.1, x, y, size);
-    bodyGrad.addColorStop(0, '#ffffff44');
-    bodyGrad.addColorStop(0.4, color + (isActive ? 'ee' : 'bb'));
-    bodyGrad.addColorStop(1, color + '66');
-    ctx.fillStyle = bodyGrad;
+    ctx.fillStyle = color + (isActive ? 'ee' : 'bb');
     ctx.fill();
-
-    // 边缘光
-    ctx.strokeStyle = color;
-    ctx.lineWidth = isActive ? 1.2 : 0.4;
-    ctx.globalAlpha = dimmed ? 0.12 : (isActive ? 1 : 0.7);
+    ctx.strokeStyle = isActive ? '#ffffff' : color;
+    ctx.lineWidth = isActive ? 1.5 : 0.5;
     ctx.stroke();
 
-    // === 选中节点：旋转虚线环 ===
-    if (isActive) {
-      ctx.globalAlpha = 0.6;
-      const ringR = size * 1.8 + Math.sin(t * 2) * size * 0.2;
-      ctx.beginPath();
-      ctx.arc(x, y, ringR, 0, Math.PI * 2);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 0.6;
-      ctx.setLineDash([4, 4]);
-      ctx.lineDashOffset = -t * 20; // 旋转动画
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
+    // 文字标签（分级显示）
+    const showLabel = isActive || isConnected || node.weight >= 3 || globalScale > 1.5;
+    if (showLabel) {
+      const fontSize = Math.max(2.5, Math.min(4.5, 11 / globalScale));
+      let label = node.name;
+      if (label.length > 8 && globalScale < 1.2) label = label.substring(0, 7) + '…';
+      else if (label.length > 12) label = label.substring(0, 11) + '…';
+
+      ctx.font = `600 ${fontSize}px "Noto Sans SC", system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+
+      // 文字背景
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(5, 5, 20, 0.65)';
+      ctx.fillRect(x - tw / 2 - 1.5, y + size + 1, tw + 3, fontSize + 2);
+
+      ctx.fillStyle = isActive ? '#ffffff' : (dimmed ? '#555' : '#d0d0e0');
+      ctx.fillText(label, x, y + size + 2);
     }
-
-    // === 文字标签 ===
-    ctx.globalAlpha = dimmed ? 0.12 : 1;
-    const fontSize = Math.max(3, Math.min(5, 12 / globalScale));
-    let label = node.name;
-    if (label.length > 10) label = label.substring(0, 9) + '…';
-
-    ctx.font = `600 ${fontSize}px "Noto Sans SC", system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-
-    // 阴影
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
-    ctx.fillText(label, x + 0.3, y + size + 2.3);
-    // 正文
-    ctx.fillStyle = isActive ? '#ffffff' : (dimmed ? '#555' : '#c8c8d8');
-    ctx.fillText(label, x, y + size + 2);
 
     ctx.restore();
   }, [getNodeSize, activeNodeId, connectedNodes]);
 
-  // ============ Canvas 绘制：动态连线 + 流动粒子 ============
-  const linkCanvasObject = useCallback((link: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+  // ============ 连线颜色（用内置渲染，不自定义 Canvas） ============
+  const linkColor = useCallback((link: any) => {
+    if (!activeNodeId) return 'rgba(255, 255, 255, 0.2)';
     const sId = typeof link.source === 'object' ? link.source.id : link.source;
     const tId = typeof link.target === 'object' ? link.target.id : link.target;
-    const isHighlighted = activeNodeId && connectedNodes.has(sId) && connectedNodes.has(tId);
-    const dimmed = activeNodeId && !isHighlighted;
-    const t = timeRef.current;
+    const isHighlighted = connectedNodes.has(sId) && connectedNodes.has(tId);
+    if (isHighlighted) return 'rgba(255, 255, 255, 0.75)';
+    return 'rgba(255, 255, 255, 0.04)';
+  }, [activeNodeId, connectedNodes]);
 
-    const sx = link.source.x || 0;
-    const sy = link.source.y || 0;
-    const tx = link.target.x || 0;
-    const ty = link.target.y || 0;
-
-    ctx.save();
-
-    // === 连线 ===
-    ctx.beginPath();
-    ctx.moveTo(sx, sy);
-    ctx.lineTo(tx, ty);
-
-    if (isHighlighted) {
-      ctx.strokeStyle = 'rgba(160, 140, 255, 0.7)';
-      ctx.lineWidth = Math.max(1, link.weight * 0.6);
-    } else if (dimmed) {
-      ctx.strokeStyle = 'rgba(80, 80, 140, 0.04)';
-      ctx.lineWidth = 0.2;
-    } else {
-      // 默认连线也有微弱脉动
-      const pulse = 0.12 + 0.06 * Math.sin(t * 0.8 + (link.source.x || 0) * 0.01);
-      ctx.strokeStyle = `rgba(100, 100, 200, ${pulse})`;
-      ctx.lineWidth = 0.4;
-    }
-    ctx.stroke();
-
-    // === 流动粒子（所有可见连线都有，高亮的更明显） ===
-    if (!dimmed) {
-      const speed = isHighlighted ? 0.4 : 0.15;
-      const particleCount = isHighlighted ? 2 : 1;
-      const particleSize = isHighlighted ? 1.5 : 0.8;
-      const particleAlpha = isHighlighted ? 0.9 : 0.3;
-
-      for (let p = 0; p < particleCount; p++) {
-        const offset = p / particleCount;
-        const progress = ((t * speed + offset + (link.source.x || 0) * 0.001) % 1 + 1) % 1;
-        const px = sx + (tx - sx) * progress;
-        const py = sy + (ty - sy) * progress;
-
-        ctx.beginPath();
-        ctx.arc(px, py, particleSize, 0, Math.PI * 2);
-        ctx.fillStyle = isHighlighted
-          ? `rgba(180, 160, 255, ${particleAlpha})`
-          : `rgba(130, 130, 220, ${particleAlpha})`;
-        ctx.fill();
-      }
-    }
-
-    // === 关系标签（仅高亮连线 + 缩放足够大时） ===
-    if (isHighlighted && globalScale > 1.5) {
-      const midX = (sx + tx) / 2;
-      const midY = (sy + ty) / 2;
-      const fontSize = Math.max(2.5, 8 / globalScale);
-      ctx.font = `${fontSize}px "Noto Sans SC", sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = 'rgba(200, 190, 255, 0.85)';
-      ctx.fillText(link.relation || '', midX, midY - 2);
-    }
-
-    ctx.restore();
+  const linkWidth = useCallback((link: any) => {
+    if (!activeNodeId) return 0.5;
+    const sId = typeof link.source === 'object' ? link.source.id : link.source;
+    const tId = typeof link.target === 'object' ? link.target.id : link.target;
+    const isHighlighted = connectedNodes.has(sId) && connectedNodes.has(tId);
+    return isHighlighted ? 1.5 : 0.3;
   }, [activeNodeId, connectedNodes]);
 
   // 节点点击
@@ -260,29 +165,101 @@ export default function KnowledgeGraph3D({
     flyToNode(focusNodeId);
   }, [focusNodeId, flyToNode]);
 
-  // 初始化：力参数 + 持续动态
+  // 初始化：力参数
   useEffect(() => {
     if (!fgRef.current || nodes.length === 0) return;
     if (typeof fgRef.current.d3Force !== 'function') return;
 
     const fg = fgRef.current;
 
-    // 力布局参数
-    fg.d3Force('link')?.distance(30);
-    fg.d3Force('charge')?.strength(-50);
-    fg.d3Force('center')?.strength(0.05); // 很弱的居中力，避免拉回原点
+    fg.d3Force('link')?.distance(15);
+    fg.d3Force('charge')?.strength(-30).distanceMax(60);
+    fg.d3Force('center')?.strength(0.4);
 
-    // 初始全图视角
+    // 轻量漫游力
+    fg.d3Force('wander', () => {
+      if (typeof fg.graphData !== 'function') return;
+      const gd = fg.graphData();
+      if (!gd?.nodes) return;
+
+      let cx = 0, cy = 0;
+      for (const n of gd.nodes) { cx += (n.x || 0); cy += (n.y || 0); }
+      cx /= gd.nodes.length || 1;
+      cy /= gd.nodes.length || 1;
+      const boundaryR = Math.max(100, gd.nodes.length * 0.5);
+
+      for (const node of gd.nodes) {
+        if ((node as any).fx != null) continue;
+        if ((node as any).__wa == null) (node as any).__wa = Math.random() * Math.PI * 2;
+
+        (node as any).__wa += (Math.random() - 0.5) * 0.02;
+        let a = (node as any).__wa;
+
+        const dx = (node.x || 0) - cx;
+        const dy = (node.y || 0) - cy;
+        if (dx * dx + dy * dy > boundaryR * boundaryR) {
+          a = (node as any).__wa = Math.atan2(-dy, -dx) + (Math.random() - 0.5) * 0.5;
+        }
+
+        (node as any).vx = ((node as any).vx || 0) + Math.cos(a) * 0.03;
+        (node as any).vy = ((node as any).vy || 0) + Math.sin(a) * 0.03;
+      }
+    });
+
+    // 初始视角
     setTimeout(() => {
-      fg.zoomToFit?.(800, 40);
+      fg.zoomToFit?.(800, 60);
+      setTimeout(() => {
+        const z = fg.zoom?.();
+        if (z && z < 1.5) fg.zoom?.(Math.max(z * 1.8, 1.2), 600);
+      }, 900);
     }, 600);
   }, [nodes.length]);
 
-  // 图谱数据
-  const graphData = useMemo(() => ({
-    nodes: nodes.map(n => ({ ...n })),
-    links: links.map(l => ({ ...l })),
-  }), [nodes, links]);
+  // 增量合并图谱数据
+  const nodeMapRef = useRef<Map<string, any>>(new Map());
+  const prevNodeCountRef = useRef(0);
+  const [graphData, setGraphData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] });
+
+  useEffect(() => {
+    if (nodes.length === 0 && links.length === 0) return;
+
+    const existingMap = nodeMapRef.current;
+    const mergedNodes: any[] = [];
+
+    for (const n of nodes) {
+      const existing = existingMap.get(n.id);
+      if (existing) {
+        Object.assign(existing, { name: n.name, type: n.type, weight: n.weight, sourceDocuments: n.sourceDocuments });
+        mergedNodes.push(existing);
+      } else {
+        const newNode = { ...n };
+        existingMap.set(n.id, newNode);
+        mergedNodes.push(newNode);
+      }
+    }
+
+    const currentIds = new Set(nodes.map(n => n.id));
+    for (const [id] of existingMap) {
+      if (!currentIds.has(id)) existingMap.delete(id);
+    }
+
+    const newData = { nodes: mergedNodes, links: links.map(l => ({ ...l })) };
+    setGraphData(newData);
+
+    if (nodes.length > prevNodeCountRef.current) {
+      setTimeout(() => {
+        const fg = fgRef.current;
+        if (!fg) return;
+        fg.zoomToFit?.(600, 60);
+        setTimeout(() => {
+          const z = fg.zoom?.();
+          if (z && z < 1.5) fg.zoom?.(Math.max(z * 1.8, 1.2), 400);
+        }, 700);
+      }, 300);
+    }
+    prevNodeCountRef.current = nodes.length;
+  }, [nodes, links]);
 
   return (
     <div ref={containerRef} className="w-full h-full relative kg-background">
@@ -300,13 +277,15 @@ export default function KnowledgeGraph3D({
           ctx.arc(node.x || 0, node.y || 0, size + 2, 0, Math.PI * 2);
           ctx.fill();
         }}
-        linkCanvasObject={linkCanvasObject}
+        linkColor={linkColor}
+        linkWidth={linkWidth}
         onNodeClick={handleNodeClick}
         onNodeHover={(node: any) => setHoveredNode(node?.id || null)}
         backgroundColor="rgba(0,0,0,0)"
         enableNodeDrag={true}
-        d3AlphaDecay={0.02}
-        d3VelocityDecay={0.3}
+        d3AlphaMin={0.05}
+        d3AlphaDecay={0.01}
+        d3VelocityDecay={0.35}
         warmupTicks={60}
         cooldownTicks={Infinity}
         cooldownTime={Infinity}
