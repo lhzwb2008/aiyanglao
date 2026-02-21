@@ -2,6 +2,11 @@
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# 与 server/.env 中的 PORT 保持一致（避免与 Umami 等占用的 3001 冲突）
+if [ -f "$PROJECT_DIR/server/.env" ]; then
+  _p=$(grep -E '^PORT=' "$PROJECT_DIR/server/.env" | cut -d= -f2)
+  [ -n "$_p" ] && PORT="$_p"
+fi
 PORT="${PORT:-3001}"
 
 echo "========================================="
