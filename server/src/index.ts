@@ -1,10 +1,8 @@
+import './env.js';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import dotenv from 'dotenv';
 import graphRoutes from './routes/graph.js';
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
