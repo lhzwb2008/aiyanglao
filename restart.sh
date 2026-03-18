@@ -19,8 +19,8 @@ sleep 3
 # 检查是否启动成功
 if kill -0 $PID 2>/dev/null; then
   echo "✅ 服务已在后台启动 (PID: $PID)"
-  echo "   前端: http://localhost:5173"
-  echo "   后端: http://localhost:3001"
+  echo "   访问地址: http://localhost:3001 （前端+后端，部署只需开放此端口）"
+  echo "   开发时前端: http://localhost:5173"
   echo "   日志: $LOG_FILE"
   echo "   查看日志: tail -f $LOG_FILE"
   echo "   停止服务: kill $PID 或重新运行 ./restart.sh"
