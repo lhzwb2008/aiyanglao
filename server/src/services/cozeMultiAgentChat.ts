@@ -185,12 +185,80 @@ export function summarizeRoutingFromMessages(messages: CozeChatMessage[]): {
   return { jumpEvents, sceneSnapshots, primaryActiveAgentId };
 }
 
+function primaryAgentFromRouting(
+  jumpEvents: CozeMultiAgentJumpEvent[],
+  sceneSnapshots: CozeSceneContextSnapshot[]
+): string | undefined {
+  const lastScene = sceneSnapshots[sceneSnapshots.length - 1];
+  const lastJump = jumpEvents[jumpEvents.length - 1];
+  return lastScene?.activeAgentId ?? lastJump?.agentId;
+}
+
+export interface CozeStreamHandlers {
+  /** 模型 thinking / reasoning 增量 */
+  onReasoningDelta?: (chunk: string) => void;
+  /** 最终回复正文增量 */
+  onAnswerDelta?: (chunk: string) => void;
+  onJump?: (jump: CozeMultiAgentJumpEvent) => void;
+  onScene?: (scene: CozeSceneContextSnapshot) => void;
+}
+
+export interface CozeStreamResult {
+  chatId: string;
+  conversationId: string;
+  status: string;
+  answer: string;
+  reasoningContent: string;
+  usage?: Record<string, unknown>;
+  lastError?: { code?: number; msg?: string };
+  jumpEvents: CozeMultiAgentJumpEvent[];
+  sceneSnapshots: CozeSceneContextSnapshot[];
+  primaryActiveAgentId?: string;
+}
+
+async function* iterateSseEvents(
+  reader: ReadableStreamDefaultReader<Uint8Array>
+): AsyncGenerator<{ event: string; data: string }> {
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+    for (;;) {
+      const sep = buffer.indexOf('\n\n');
+      if (sep < 0) {
+        break;
+      }
+      const block = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      let eventName = 'message';
+      const dataLines: string[] = [];
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).replace(/^\s/, ''));
+        }
+      }
+      const dataStr = dataLines.join('\n');
+      if (dataStr.length > 0) {
+        yield { event: eventName, data: dataStr };
+      }
+    }
+    if (done) {
+      break;
+    }
+  }
+}
+
 export class CozeMultiAgentChatService {
   private client: AxiosInstance;
   private defaultBotId: string;
+  private token: string;
 
   constructor(options?: { token?: string; botId?: string }) {
-    const token = options?.token ?? process.env.COZE_API_TOKEN;
+    const token = options?.token ?? process.env.COZE_API_TOKEN ?? '';
+    this.token = token;
     this.defaultBotId =
       options?.botId ??
       process.env.COZE_MULTI_AGENT_BOT_ID ??
@@ -308,6 +376,211 @@ export class CozeMultiAgentChatService {
       messages,
       jumpEvents,
       sceneSnapshots,
+    };
+  }
+
+  /**
+   * 流式对话（SSE）：低延迟输出 answer / reasoning 增量；verbose 完成事件用于多智能体路由。
+   * 与 stream:false + 轮询 retrieve 相比，首字延迟明显更低。
+   */
+  async chatRoundStream(params: {
+    userId: string;
+    userMessage: string;
+    botId?: string;
+    conversationId?: string;
+    handlers?: CozeStreamHandlers;
+  }): Promise<CozeStreamResult> {
+    const {
+      userId,
+      userMessage,
+      botId = this.defaultBotId,
+      conversationId,
+      handlers = {},
+    } = params;
+
+    if (!this.token) {
+      throw new Error('COZE_API_TOKEN is not set');
+    }
+
+    const body: Record<string, unknown> = {
+      bot_id: botId,
+      user_id: userId,
+      stream: true,
+      additional_messages: [
+        {
+          role: 'user',
+          content: userMessage,
+          content_type: 'text',
+        },
+      ],
+    };
+    if (conversationId) {
+      body.conversation_id = conversationId;
+    }
+
+    const res = await fetch(`${COZE_API_BASE}/v3/chat`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+        'Agw-Js-Conv': 'str',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Coze stream HTTP ${res.status}: ${errText.slice(0, 500)}`);
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      throw new Error('Coze stream: empty response body');
+    }
+
+    let answer = '';
+    let reasoningContent = '';
+    let anyAnswerDelta = false;
+    let anyReasoningDelta = false;
+    const jumpEvents: CozeMultiAgentJumpEvent[] = [];
+    const sceneSnapshots: CozeSceneContextSnapshot[] = [];
+
+    let chatId = '';
+    let conversationIdOut = '';
+    let status = 'in_progress';
+    let usage: Record<string, unknown> | undefined;
+    let lastError: { code?: number; msg?: string } | undefined;
+
+    for await (const { event, data } of iterateSseEvents(reader)) {
+      if (event === 'done') {
+        break;
+      }
+
+      let payload: Record<string, unknown>;
+      try {
+        payload = JSON.parse(data) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+
+      if (
+        event === 'conversation.chat.created' ||
+        event === 'conversation.chat.in_progress'
+      ) {
+        if (payload.id != null) {
+          chatId = String(payload.id);
+        }
+        if (payload.conversation_id != null) {
+          conversationIdOut = String(payload.conversation_id);
+        }
+      }
+
+      if (event === 'conversation.message.delta') {
+        const rc = payload.reasoning_content;
+        if (typeof rc === 'string' && rc.length > 0) {
+          anyReasoningDelta = true;
+          reasoningContent += rc;
+          handlers.onReasoningDelta?.(rc);
+        }
+        const ch = payload.content;
+        if (typeof ch === 'string' && ch.length > 0) {
+          anyAnswerDelta = true;
+          answer += ch;
+          handlers.onAnswerDelta?.(ch);
+        }
+      }
+
+      if (event === 'conversation.message.completed') {
+        const msg = payload as unknown as CozeChatMessage;
+        if (msg.type === 'verbose' && typeof msg.content === 'string') {
+          const { jump, scene } = parseVerboseForRouting(msg);
+          if (jump) {
+            jumpEvents.push(jump);
+            handlers.onJump?.(jump);
+          }
+          if (scene && (scene.activeAgentId || scene.entryBotId)) {
+            sceneSnapshots.push(scene);
+            handlers.onScene?.(scene);
+          }
+        }
+        if (msg.type === 'answer') {
+          const fullR = msg.reasoning_content;
+          if (
+            !anyReasoningDelta &&
+            typeof fullR === 'string' &&
+            fullR.length > 0
+          ) {
+            reasoningContent = fullR;
+            handlers.onReasoningDelta?.(fullR);
+          }
+          const fullC = msg.content;
+          if (!anyAnswerDelta && typeof fullC === 'string' && fullC.length > 0) {
+            answer = fullC;
+            handlers.onAnswerDelta?.(fullC);
+          }
+        }
+      }
+
+      if (event === 'conversation.chat.completed') {
+        status = String(payload.status ?? 'completed');
+        if (payload.usage && typeof payload.usage === 'object') {
+          usage = payload.usage as Record<string, unknown>;
+        }
+        if (payload.id != null) {
+          chatId = String(payload.id);
+        }
+        if (payload.conversation_id != null) {
+          conversationIdOut = String(payload.conversation_id);
+        }
+      }
+
+      if (event === 'conversation.chat.failed') {
+        status = 'failed';
+        const err = payload.last_error as { code?: number; msg?: string } | undefined;
+        lastError = err;
+        throw new Error(
+          `Coze chat failed: ${err?.msg ?? JSON.stringify(payload).slice(0, 300)}`
+        );
+      }
+    }
+
+    // SSE 往往不在 completed 事件里带 reasoning_content，与 message/list 不一致；补拉一次便于展示 thinking
+    if (
+      !anyReasoningDelta &&
+      chatId &&
+      conversationIdOut &&
+      status === 'completed'
+    ) {
+      try {
+        const messagesResponse = await this.client.get('/v3/chat/message/list', {
+          params: { chat_id: chatId, conversation_id: conversationIdOut },
+        });
+        const listMsgs: CozeChatMessage[] = messagesResponse.data?.data ?? [];
+        const answerMessage = listMsgs.find(
+          (msg) => msg.type === 'answer' && msg.role === 'assistant'
+        );
+        const fullR = answerMessage?.reasoning_content;
+        if (typeof fullR === 'string' && fullR.length > 0) {
+          reasoningContent = fullR;
+        }
+      } catch {
+        /* 忽略补拉失败 */
+      }
+    }
+
+    const primaryActiveAgentId = primaryAgentFromRouting(jumpEvents, sceneSnapshots);
+
+    return {
+      chatId,
+      conversationId: conversationIdOut,
+      status,
+      answer,
+      reasoningContent,
+      usage,
+      lastError,
+      jumpEvents,
+      sceneSnapshots,
+      primaryActiveAgentId,
     };
   }
 }
