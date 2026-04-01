@@ -203,6 +203,12 @@ export interface CozeStreamHandlers {
   onScene?: (scene: CozeSceneContextSnapshot) => void;
 }
 
+/** 用户变量写入项，对应控制台「用户变量」keyword（如 credits） */
+export interface CozeUserVariableEntry {
+  keyword: string;
+  value: string;
+}
+
 export interface CozeStreamResult {
   chatId: string;
   conversationId: string;
@@ -287,6 +293,100 @@ export class CozeMultiAgentChatService {
   }
 
   /**
+   * 写入 Bot 用户变量（方案一）。connector_uid 须与本次 v3/chat 的 user_id 一致。
+   * 文档：https://www.coze.cn/open/docs/developer_guides/update_variable
+   */
+  async updateUserVariables(params: {
+    connectorUid: string;
+    data: CozeUserVariableEntry[];
+    botId?: string;
+    /** API 渠道常见为 1024，若写入失败可设环境变量 COZE_CONNECTOR_ID */
+    connectorId?: string;
+  }): Promise<void> {
+    if (!this.token) {
+      throw new Error('COZE_API_TOKEN is not set');
+    }
+    if (params.data.length === 0) {
+      return;
+    }
+    const botId = params.botId ?? this.defaultBotId;
+    const connectorId =
+      params.connectorId ?? process.env.COZE_CONNECTOR_ID ?? undefined;
+    const body: Record<string, unknown> = {
+      bot_id: botId,
+      connector_uid: params.connectorUid,
+      data: params.data.map((d) => ({ keyword: d.keyword, value: String(d.value) })),
+    };
+    if (connectorId) {
+      body.connector_id = connectorId;
+    }
+    const res = await this.client.put('/v1/variables', body);
+    const code = res.data?.code;
+    if (code !== undefined && code !== 0) {
+      throw new Error(
+        `update variables failed: ${JSON.stringify(res.data)}`
+      );
+    }
+  }
+
+  /** 读取用户变量，便于调试校验写入是否生效 */
+  async retrieveUserVariables(params: {
+    connectorUid: string;
+    keywords: string[];
+    botId?: string;
+    connectorId?: string;
+  }): Promise<CozeUserVariableEntry[]> {
+    if (!this.token) {
+      throw new Error('COZE_API_TOKEN is not set');
+    }
+    const botId = params.botId ?? this.defaultBotId;
+    const connectorId =
+      params.connectorId ?? process.env.COZE_CONNECTOR_ID ?? undefined;
+    const query: Record<string, string> = {
+      bot_id: botId,
+      connector_uid: params.connectorUid,
+      keywords: params.keywords.join(','),
+    };
+    if (connectorId) {
+      query.connector_id = connectorId;
+    }
+    const res = await this.client.get('/v1/variables', { params: query });
+    const code = res.data?.code;
+    if (code !== undefined && code !== 0) {
+      throw new Error(
+        `retrieve variables failed: ${JSON.stringify(res.data)}`
+      );
+    }
+    const raw = res.data?.data;
+    const items: unknown =
+      raw && typeof raw === 'object' && 'items' in raw
+        ? (raw as { items: unknown }).items
+        : Array.isArray(raw)
+          ? raw
+          : [];
+    if (!Array.isArray(items)) {
+      return [];
+    }
+    return items
+      .map((row) => {
+        if (!row || typeof row !== 'object') {
+          return null;
+        }
+        const o = row as Record<string, unknown>;
+        const keyword = o.keyword;
+        const value = o.value;
+        if (typeof keyword !== 'string') {
+          return null;
+        }
+        return {
+          keyword,
+          value: typeof value === 'string' ? value : String(value ?? ''),
+        };
+      })
+      .filter((x): x is CozeUserVariableEntry => x != null);
+  }
+
+  /**
    * 发起一轮对话并拉取消息列表。
    * 区分「跳转到哪个子 Bot」：优先看 jumpEvents；最终以 knowledge_recall 里 scene_context.agent_id 为准（与 jump 的 agent_id 在成功路由时应一致）。
    */
@@ -296,6 +396,9 @@ export class CozeMultiAgentChatService {
     botId?: string;
     /** 多轮时传入上一轮返回的 conversation_id */
     conversationId?: string;
+    /** 发起对话前写入用户变量（须与 userId 对应） */
+    userVariables?: CozeUserVariableEntry[];
+    connectorId?: string;
     pollIntervalMs?: number;
     maxPolls?: number;
   }): Promise<CozeChatRoundResult> {
@@ -304,9 +407,20 @@ export class CozeMultiAgentChatService {
       userMessage,
       botId = this.defaultBotId,
       conversationId,
+      userVariables,
+      connectorId,
       pollIntervalMs = 2000,
       maxPolls = 60,
     } = params;
+
+    if (userVariables?.length) {
+      await this.updateUserVariables({
+        connectorUid: userId,
+        botId,
+        connectorId,
+        data: userVariables,
+      });
+    }
 
     const body: Record<string, unknown> = {
       bot_id: botId,
@@ -388,6 +502,8 @@ export class CozeMultiAgentChatService {
     userMessage: string;
     botId?: string;
     conversationId?: string;
+    userVariables?: CozeUserVariableEntry[];
+    connectorId?: string;
     handlers?: CozeStreamHandlers;
   }): Promise<CozeStreamResult> {
     const {
@@ -395,11 +511,22 @@ export class CozeMultiAgentChatService {
       userMessage,
       botId = this.defaultBotId,
       conversationId,
+      userVariables,
+      connectorId,
       handlers = {},
     } = params;
 
     if (!this.token) {
       throw new Error('COZE_API_TOKEN is not set');
+    }
+
+    if (userVariables?.length) {
+      await this.updateUserVariables({
+        connectorUid: userId,
+        botId,
+        connectorId,
+        data: userVariables,
+      });
     }
 
     const body: Record<string, unknown> = {
@@ -544,27 +671,36 @@ export class CozeMultiAgentChatService {
       }
     }
 
-    // SSE 往往不在 completed 事件里带 reasoning_content，与 message/list 不一致；补拉一次便于展示 thinking
-    if (
-      !anyReasoningDelta &&
-      chatId &&
-      conversationIdOut &&
-      status === 'completed'
-    ) {
-      try {
-        const messagesResponse = await this.client.get('/v3/chat/message/list', {
-          params: { chat_id: chatId, conversation_id: conversationIdOut },
-        });
-        const listMsgs: CozeChatMessage[] = messagesResponse.data?.data ?? [];
-        const answerMessage = listMsgs.find(
-          (msg) => msg.type === 'answer' && msg.role === 'assistant'
-        );
-        const fullR = answerMessage?.reasoning_content;
-        if (typeof fullR === 'string' && fullR.length > 0) {
-          reasoningContent = fullR;
+    // 部分配置下 SSE 只推 reasoning 分片，正文 content 无增量；completed 里的 answer 也可能不带 content。
+    // 此时须在流结束后用 message/list 补全文，否则会只有 Thinking、stdout 无「原文」。
+    if (chatId && conversationIdOut && status === 'completed') {
+      const needAnswerArchive = !answer.trim();
+      const needReasoningArchive = !anyReasoningDelta;
+      if (needAnswerArchive || needReasoningArchive) {
+        try {
+          const messagesResponse = await this.client.get('/v3/chat/message/list', {
+            params: { chat_id: chatId, conversation_id: conversationIdOut },
+          });
+          const listMsgs: CozeChatMessage[] = messagesResponse.data?.data ?? [];
+          const answerMessage = listMsgs.find(
+            (msg) => msg.type === 'answer' && msg.role === 'assistant'
+          );
+          if (needAnswerArchive && answerMessage) {
+            const fullC = answerMessage.content;
+            if (typeof fullC === 'string' && fullC.trim().length > 0) {
+              answer = fullC;
+              handlers.onAnswerDelta?.(fullC);
+            }
+          }
+          if (needReasoningArchive && answerMessage) {
+            const fullR = answerMessage.reasoning_content;
+            if (typeof fullR === 'string' && fullR.length > 0) {
+              reasoningContent = fullR;
+            }
+          }
+        } catch {
+          /* 忽略补拉失败 */
         }
-      } catch {
-        /* 忽略补拉失败 */
       }
     }
 
