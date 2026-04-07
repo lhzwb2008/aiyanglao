@@ -7,8 +7,9 @@
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd server && npm run dev",
     "client": "cd client && npm run dev",
-    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
-    "build": "cd client && npm run build"
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install && cd ../news-sync-service && npm install",
+    "build": "cd client && npm run build",
+    "news-sync": "cd news-sync-service && npm run sync"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
