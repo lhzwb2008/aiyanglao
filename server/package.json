@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "coze:multi-agent": "tsx src/scripts/cozeMultiAgentCli.ts"
+    "coze:multi-agent": "tsx src/scripts/cozeMultiAgentCli.ts",
+    "coze:v3": "node scripts/cozeV3Chat.mjs"
   },
   "dependencies": {
     "axios": "^1.6.2",

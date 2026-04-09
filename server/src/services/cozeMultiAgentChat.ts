@@ -396,6 +396,11 @@ export class CozeMultiAgentChatService {
     botId?: string;
     /** 多轮时传入上一轮返回的 conversation_id */
     conversationId?: string;
+    /**
+     * 对话流/工作流「开始节点」上声明的自定义入参，随 v3/chat 一并传入（与 Playground 的 parameters 一致）。
+     * 不会自动等同于「用户变量」面板里的变量，除非编排里把该入参赋给变量或提示词。
+     */
+    parameters?: Record<string, unknown>;
     /** 发起对话前写入用户变量（须与 userId 对应） */
     userVariables?: CozeUserVariableEntry[];
     connectorId?: string;
@@ -407,6 +412,7 @@ export class CozeMultiAgentChatService {
       userMessage,
       botId = this.defaultBotId,
       conversationId,
+      parameters,
       userVariables,
       connectorId,
       pollIntervalMs = 2000,
@@ -436,6 +442,9 @@ export class CozeMultiAgentChatService {
     };
     if (conversationId) {
       body.conversation_id = conversationId;
+    }
+    if (parameters && Object.keys(parameters).length > 0) {
+      body.parameters = parameters;
     }
 
     const chatResponse = await this.client.post('/v3/chat', body);
@@ -502,6 +511,7 @@ export class CozeMultiAgentChatService {
     userMessage: string;
     botId?: string;
     conversationId?: string;
+    parameters?: Record<string, unknown>;
     userVariables?: CozeUserVariableEntry[];
     connectorId?: string;
     handlers?: CozeStreamHandlers;
@@ -511,6 +521,7 @@ export class CozeMultiAgentChatService {
       userMessage,
       botId = this.defaultBotId,
       conversationId,
+      parameters,
       userVariables,
       connectorId,
       handlers = {},
@@ -543,6 +554,9 @@ export class CozeMultiAgentChatService {
     };
     if (conversationId) {
       body.conversation_id = conversationId;
+    }
+    if (parameters && Object.keys(parameters).length > 0) {
+      body.parameters = parameters;
     }
 
     const res = await fetch(`${COZE_API_BASE}/v3/chat`, {
