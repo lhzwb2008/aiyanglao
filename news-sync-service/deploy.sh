@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# 在字节云 / 任意 Linux 上部署 news-sync-service：安装依赖，可选写入当前用户的 crontab（每天 0:00 增量同步）
+# 在字节云 / 任意 Linux 上部署 news-sync-service：安装依赖，可选写入 crontab
+# 同步靠稿件 ID 去重；改频率只改下方 cron 表达式即可（如每小时: 0 * * * *）
 #
 # 用法:
 #   chmod +x deploy.sh
 #   ./deploy.sh              # 仅安装依赖、创建 logs 目录
-#   ./deploy.sh --with-cron  # 同上 + 安装定时任务（每天 0:00）
-#   ./deploy.sh --with-cron "30 2 * * *"  # 自定义 cron 时间（例：每天 2:30）
+#   ./deploy.sh --with-cron  # 同上 + crontab（默认每天 0:00）
+#   ./deploy.sh --with-cron "0 * * * *"   # 每小时整点
+#   ./deploy.sh --with-cron "30 2 * * *"  # 每天 2:30
 #
 set -euo pipefail
 

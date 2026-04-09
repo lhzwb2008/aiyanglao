@@ -1,6 +1,7 @@
 /**
- * 拉取融媒 API → 过滤已同步稿件 ID → 增量上传新稿到 Coze 知识库
- * 用法: cd news-sync-service && npm run sync
+ * 拉取融媒 API → 按稿件 ID 去重 → 增量上传新稿到 Coze 知识库
+ * 接口必须传 beginAt/endAt，无法一次「全历史」；时间窗与上次重叠无妨，靠 synced_ids 去重。
+ * 改执行频率只需改 crontab；可配合 SYNC_DAYS 控制单次查询跨度。
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,6 +69,7 @@ function buildCorpus(items: ManuscriptItem[]): string {
 async function fetchAllPages(config: AppConfig): Promise<ManuscriptItem[]> {
   const end = new Date();
   end.setHours(23, 59, 59, 999);
+
   const start = new Date(end);
   start.setDate(start.getDate() - (config.syncDays - 1));
   start.setHours(0, 0, 0, 0);
@@ -75,7 +77,9 @@ async function fetchAllPages(config: AppConfig): Promise<ManuscriptItem[]> {
   const beginAt = formatDateTime(start);
   const endAt = formatDateTime(end);
 
-  console.log(`时间范围: ${beginAt} ~ ${endAt}`);
+  console.log(
+    `时间范围: ${beginAt} ~ ${endAt}（最近 ${config.syncDays} 个自然日至今天；重复 ID 不会上传）`
+  );
   console.log(`mediaType: ${JSON.stringify(config.mediaTypes)} mediaLevels: ${JSON.stringify(config.mediaLevels)}`);
 
   const token = await gatewayLogin(
@@ -128,7 +132,9 @@ async function runSync(): Promise<void> {
   console.log('开始拉取融媒稿件…');
   const items = await fetchAllPages(config);
   if (items.length === 0) {
-    console.log('接口未返回稿件，结束。');
+    console.log(
+      '接口未返回稿件（时间窗内无数据），结束。若希望多捞几天，可在 .env 增大 SYNC_DAYS（如 7）。'
+    );
     return;
   }
 

@@ -38,6 +38,7 @@ export type AppConfig = {
   gatewayPassword: string;
   mediaTypes: string[];
   mediaLevels: string[];
+  /** 每次请求拉「最近几个自然日」到「今天 23:59」；与上次时间窗重叠无妨，上传前按稿件 ID 去重 */
   syncDays: number;
   pageSize: number;
   maxPages: number;
@@ -56,7 +57,7 @@ export function loadConfig(): AppConfig {
     mediaTypes: splitComma(process.env.MEDIA_TYPES || '融媒APP'),
     mediaLevels: splitComma(process.env.MEDIA_LEVELS || '徐汇区'),
 
-    syncDays: Math.max(1, parseInt(process.env.SYNC_DAYS || '1', 10) || 1),
+    syncDays: Math.max(1, parseInt(process.env.SYNC_DAYS || '7', 10) || 7),
     pageSize: Math.min(100, Math.max(1, parseInt(process.env.PAGE_SIZE || '50', 10) || 50)),
     maxPages: Math.min(500, Math.max(1, parseInt(process.env.MAX_PAGES || '50', 10) || 50)),
 
