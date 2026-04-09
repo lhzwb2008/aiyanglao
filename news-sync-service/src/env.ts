@@ -1,15 +1,26 @@
 import dotenv from 'dotenv';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pkgRoot = path.join(__dirname, '..');
+const envInPackage = path.join(pkgRoot, '.env');
+const envInCwd = path.resolve(process.cwd(), '.env');
 
-/** 从 news-sync-service 目录加载 .env */
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
+/** 优先加载 news-sync-service/.env，其次当前工作目录下的 .env（兼容从别处启动） */
+dotenv.config({ path: envInPackage });
+dotenv.config({ path: envInCwd });
 
 function req(name: string): string {
   const v = process.env[name];
-  if (!v) throw new Error(`缺少环境变量: ${name}`);
+  if (!v) {
+    const hasFile = fs.existsSync(envInPackage) || fs.existsSync(envInCwd);
+    const hint = hasFile
+      ? `请检查 .env 中是否配置了 ${name}（勿留空）。`
+      : `未找到 .env：请把本机 news-sync-service/.env 拷到服务器同目录，或复制 .env.example 为 .env 后填写。\n期望路径: ${envInPackage}`;
+    throw new Error(`缺少环境变量: ${name}\n${hint}`);
+  }
   return v;
 }
 

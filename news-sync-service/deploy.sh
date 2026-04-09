@@ -26,8 +26,9 @@ log "安装依赖 (npm install)…"
 npm install
 
 mkdir -p logs
+touch logs/sync.log
 chmod +x run-cron.sh 2>/dev/null || true
-log "日志目录: $SCRIPT_DIR/logs/sync.log"
+log "日志文件: $SCRIPT_DIR/logs/sync.log（部署后已创建空文件，首次跑同步后会有内容）"
 
 if [[ "${1:-}" == "--with-cron" ]]; then
   RUNNER="$SCRIPT_DIR/run-cron.sh"
