@@ -31,13 +31,19 @@ function splitComma(s: string): string[] {
     .filter(Boolean);
 }
 
+export type QueryMode = 'district' | 'street';
+
 export type AppConfig = {
   gatewayLoginUrl: string;
   gatewayQueryUrl: string;
   gatewayUsername: string;
   gatewayPassword: string;
+  /** district：按区+渠道（mediaType+mediaLevels）；street：按街镇（locations） */
+  queryMode: QueryMode;
   mediaTypes: string[];
   mediaLevels: string[];
+  /** 街镇名称，仅 queryMode=street 时必填，如 广中路街道 */
+  locations: string;
   /** 每次请求拉「最近几个自然日」到「今天 23:59」；与上次时间窗重叠无妨，上传前按稿件 ID 去重 */
   syncDays: number;
   pageSize: number;
@@ -48,14 +54,24 @@ export type AppConfig = {
 };
 
 export function loadConfig(): AppConfig {
+  const modeRaw = (process.env.QUERY_MODE || 'district').toLowerCase();
+  const queryMode: QueryMode = modeRaw === 'street' ? 'street' : 'district';
+  const locations = (process.env.LOCATIONS || '').trim();
+
+  if (queryMode === 'street' && !locations) {
+    throw new Error('QUERY_MODE=street 时必须配置 LOCATIONS（街镇名称，如 广中路街道）');
+  }
+
   return {
     gatewayLoginUrl: req('GATEWAY_LOGIN_URL'),
     gatewayQueryUrl: req('GATEWAY_QUERY_URL'),
     gatewayUsername: req('GATEWAY_USERNAME'),
     gatewayPassword: req('GATEWAY_PASSWORD'),
 
+    queryMode,
     mediaTypes: splitComma(process.env.MEDIA_TYPES || '融媒APP'),
-    mediaLevels: splitComma(process.env.MEDIA_LEVELS || '徐汇区'),
+    mediaLevels: splitComma(process.env.MEDIA_LEVELS || '上海市'),
+    locations,
 
     syncDays: Math.max(1, parseInt(process.env.SYNC_DAYS || '7', 10) || 7),
     pageSize: Math.min(100, Math.max(1, parseInt(process.env.PAGE_SIZE || '50', 10) || 50)),

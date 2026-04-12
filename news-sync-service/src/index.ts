@@ -80,7 +80,13 @@ async function fetchAllPages(config: AppConfig): Promise<ManuscriptItem[]> {
   console.log(
     `时间范围: ${beginAt} ~ ${endAt}（最近 ${config.syncDays} 个自然日至今天；重复 ID 不会上传）`
   );
-  console.log(`mediaType: ${JSON.stringify(config.mediaTypes)} mediaLevels: ${JSON.stringify(config.mediaLevels)}`);
+  if (config.queryMode === 'street') {
+    console.log(`查询模式: 按街镇 locations=${config.locations}`);
+  } else {
+    console.log(
+      `查询模式: 按区 mediaType=${JSON.stringify(config.mediaTypes)} mediaLevels=${JSON.stringify(config.mediaLevels)}`
+    );
+  }
 
   const token = await gatewayLogin(
     config.gatewayLoginUrl,
@@ -98,10 +104,12 @@ async function fetchAllPages(config: AppConfig): Promise<ManuscriptItem[]> {
       token,
       beginAt,
       endAt,
-      mediaTypes: config.mediaTypes,
-      mediaLevels: config.mediaLevels,
       page,
       size: config.pageSize,
+      queryMode: config.queryMode,
+      mediaTypes: config.mediaTypes,
+      mediaLevels: config.mediaLevels,
+      locations: config.locations,
     });
 
     const batch = data?.data || [];

@@ -48,22 +48,30 @@ export async function queryManuscripts(params: {
   token: string;
   beginAt: string;
   endAt: string;
-  mediaTypes: string[];
-  mediaLevels: string[];
   page: number;
   size: number;
+  queryMode: 'district' | 'street';
+  mediaTypes: string[];
+  mediaLevels: string[];
+  locations: string;
 }): Promise<QueryResponse['data']> {
+  const body: Record<string, unknown> = {
+    beginAt: params.beginAt,
+    endAt: params.endAt,
+    orderBy: 'publishAt',
+    size: params.size,
+    page: params.page,
+  };
+  if (params.queryMode === 'street') {
+    body.locations = params.locations;
+  } else {
+    body.mediaType = params.mediaTypes;
+    body.mediaLevels = params.mediaLevels;
+  }
+
   const { data } = await axios.post<QueryResponse>(
     params.queryUrl,
-    {
-      beginAt: params.beginAt,
-      endAt: params.endAt,
-      mediaType: params.mediaTypes,
-      mediaLevels: params.mediaLevels,
-      orderBy: 'publishAt',
-      size: params.size,
-      page: params.page,
-    },
+    body,
     {
       headers: {
         'Content-Type': 'application/json',
