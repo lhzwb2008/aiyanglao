@@ -11,7 +11,10 @@
     "build": "cd client && npm run build",
     "news-sync": "cd news-sync-service && npm run sync",
     "news-sync:setup": "cd news-sync-service && npm run setup",
-    "news-sync:purge-and-resync": "cd news-sync-service && npm run purge-and-resync"
+    "news-sync:purge-and-resync": "cd news-sync-service && npm run purge-and-resync",
+    "news-sync:clear-synced-ids": "cd news-sync-service && npm run clear-synced-ids",
+    "purge-and-resync": "cd news-sync-service && npm run purge-and-resync",
+    "clear-synced-ids": "cd news-sync-service && npm run clear-synced-ids"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

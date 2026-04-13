@@ -89,6 +89,16 @@ cd news-sync-service && CONFIRM_PURGE=1 npm run purge-and-resync
 
 说明：融媒接口按时间窗查询，单次同步覆盖**最近 `SYNC_DAYS` 个自然日**；若要更长历史，可临时增大 `SYNC_DAYS` 或分多次跑。
 
+**若只在扣子控制台删了知识库文件、没有用 `purge-and-resync`**：本地 `news-sync-service/data/synced_ids.json` 仍会记录「已同步」，下一轮会把这些 ID 当旧稿**跳过上传**，与空知识库不一致。此时应单独清空本地记录：
+
+```bash
+npm run news-sync:clear-synced-ids
+```
+
+根目录也支持短别名：`npm run clear-synced-ids`（与上一行等价）。在 `news-sync-service` 目录下可直接：`npm run clear-synced-ids`。
+
+若服务器提示 `Missing script`，说明仓库未更新到含这些脚本的版本，请在服务器上 **`git pull`** 后再执行。清空知识库并重拉：根目录 `CONFIRM_PURGE=1 npm run news-sync:purge-and-resync` 或短别名 `CONFIRM_PURGE=1 npm run purge-and-resync`。
+
 ### 「重启」说明
 
 - 无常驻进程；**改 `.env` 后**定时仍由 cron 调 `run-cron.sh`，若需立刻生效可再执行 `npm run news-sync`。

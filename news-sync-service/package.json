@@ -8,6 +8,7 @@
     "sync": "tsx src/index.ts",
     "setup": "tsx src/setupNewsSync.ts",
     "purge-and-resync": "tsx src/purgeAndResync.ts",
+    "clear-synced-ids": "tsx src/clearSyncedIdsCli.ts",
     "start": "npm run setup"
   },
   "dependencies": {
