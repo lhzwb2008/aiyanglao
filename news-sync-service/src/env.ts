@@ -70,7 +70,8 @@ export function loadConfig(): AppConfig {
 
     queryMode,
     mediaTypes: splitComma(process.env.MEDIA_TYPES || '融媒APP'),
-    mediaLevels: splitComma(process.env.MEDIA_LEVELS || '上海市'),
+    /** 留空表示不按 mediaLevels 筛选。勿默认填「上海市」：与融媒 APP 组合时接口常返回 0 条（交集为空）。 */
+    mediaLevels: splitComma(process.env.MEDIA_LEVELS ?? ''),
     locations,
 
     syncDays: Math.max(1, parseInt(process.env.SYNC_DAYS || '7', 10) || 7),

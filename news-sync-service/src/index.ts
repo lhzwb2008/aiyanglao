@@ -83,8 +83,12 @@ async function fetchAllPages(config: AppConfig): Promise<ManuscriptItem[]> {
   if (config.queryMode === 'street') {
     console.log(`查询模式: 按街镇 locations=${config.locations}`);
   } else {
+    const lv =
+      config.mediaLevels.length > 0
+        ? JSON.stringify(config.mediaLevels)
+        : '（未设，不按 mediaLevels 筛选）';
     console.log(
-      `查询模式: 按区 mediaType=${JSON.stringify(config.mediaTypes)} mediaLevels=${JSON.stringify(config.mediaLevels)}`
+      `查询模式: 按区 mediaType=${JSON.stringify(config.mediaTypes)} mediaLevels=${lv}`
     );
   }
 
@@ -141,7 +145,10 @@ export async function runSync(): Promise<void> {
   const items = await fetchAllPages(config);
   if (items.length === 0) {
     console.log(
-      '接口未返回稿件（时间窗内无数据），结束。若希望多捞几天，可在 .env 增大 SYNC_DAYS（如 7）。'
+      '【未写入知识库】融媒接口在本时间窗内返回 0 条稿件，已跳过上传（不是 Coze 报错）。'
+    );
+    console.log(
+      '请检查：1）.env 中 SYNC_DAYS 是否过小，可改为 30/90/365 扩大时间窗；2）MEDIA_TYPES、MEDIA_LEVELS、QUERY_MODE 是否与网关实际枚举一致。'
     );
     return;
   }

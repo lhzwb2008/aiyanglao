@@ -55,6 +55,14 @@ npm run dev
 
 3. 安装依赖：仓库根目录 `npm run install:all`，或 `cd news-sync-service && npm install`。
 
+### 筛选项与「接口 0 条」排查（重要）
+
+- **`SYNC_DAYS` 不是「全历史」**：只是一次查询的时间窗；要更久需调大或多次跑。
+- **`MEDIA_TYPES` + `MEDIA_LEVELS` 为 AND 关系**：两者须**同时**命中接口索引。曾用 `融媒APP` + `上海市` 时，网关侧交集为 **0**（与「仅时间窗不筛选」能出数百万条」不矛盾）。
+- **推荐**：全量融媒 APP 稿件时 **`MEDIA_LEVELS` 留空**（不按层级筛），只保留 `MEDIA_TYPES=融媒APP`。若必须按市/区筛，请向网关方要**与库内字段一致的枚举**，勿凭感觉填「上海市」。
+- **`MAX_PAGES` × `PAGE_SIZE`** 为单次同步条数上限（默认 50×50=2500）；数据多时请提高 `MAX_PAGES` 或缩小 `SYNC_DAYS` 分批跑。
+- 诊断脚本（在 `news-sync-service` 下）：`npm run probe:variants`、`npm run probe:sample`（会请求真实网关，勿在 CI 随意跑）。
+
 ### 推荐：安装定时任务并立即同步一次
 
 在 **`news-sync-service` 目录**执行 `npm run setup`（或 `npm start`，等价），或在**仓库根目录**执行：
@@ -98,6 +106,27 @@ npm run news-sync:clear-synced-ids
 根目录也支持短别名：`npm run clear-synced-ids`（与上一行等价）。在 `news-sync-service` 目录下可直接：`npm run clear-synced-ids`。
 
 若服务器提示 `Missing script`，说明仓库未更新到含这些脚本的版本，请在服务器上 **`git pull`** 后再执行。清空知识库并重拉：根目录 `CONFIRM_PURGE=1 npm run news-sync:purge-and-resync` 或短别名 `CONFIRM_PURGE=1 npm run purge-and-resync`。
+
+### 服务器上查看拉取日志
+
+**由 crontab 调 `run-cron.sh` 的同步**，标准输出与错误都会**追加**到：
+
+`news-sync-service/logs/sync.log`
+
+在服务器上（路径按你的仓库根目录调整）：
+
+```bash
+# 持续跟踪最新日志（最常用）
+tail -f ~/aiyanglao/news-sync-service/logs/sync.log
+
+# 只看末尾 100 行
+tail -n 100 ~/aiyanglao/news-sync-service/logs/sync.log
+
+# 搜错误
+grep -i error ~/aiyanglao/news-sync-service/logs/sync.log
+```
+
+**在终端手动执行** `npm run news-sync` / `news-sync:setup` 时，日志默认只在当前终端，**不会**自动写入 `sync.log`。若也要落盘，可自行：`npm run news-sync >> news-sync-service/logs/manual.log 2>&1`。
 
 ### 「重启」说明
 

@@ -65,8 +65,12 @@ export async function queryManuscripts(params: {
   if (params.queryMode === 'street') {
     body.locations = params.locations;
   } else {
-    body.mediaType = params.mediaTypes;
-    body.mediaLevels = params.mediaLevels;
+    if (params.mediaTypes.length > 0) {
+      body.mediaType = params.mediaTypes;
+    }
+    if (params.mediaLevels.length > 0) {
+      body.mediaLevels = params.mediaLevels;
+    }
   }
 
   const { data } = await axios.post<QueryResponse>(
