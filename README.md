@@ -134,7 +134,9 @@ grep -i error ~/aiyanglao/news-sync-service/logs/sync.log
 
 ### 知识库分段（扣子侧）
 
-上传的 txt 使用**自定义分段**：以 `<<NEWS_ITEM>>` 为界先按篇切开；**此外**扣子仍会用 `max_tokens`（环境变量 **`CHUNK_MAX_TOKENS`**，默认 **32000**）限制单段长度——若设得太小（例如 2000），**长稿会在一篇内被再切几段**，看起来就像「有的按篇、有的切碎」。极长正文仍可能超过上限，属平台限制；可再调大 `CHUNK_MAX_TOKENS` 试到接口接受的上限。旧文件若仍显示 `###NEWS_ITEM###` 等，需删文档后重新同步生成新文件。
+- 默认 **`COZE_CHUNK_MODE=auto`**：上传时使用 API **`chunk_type: 1`**（对应控制台「**自动分段与清洗**」），并开启「合并空白」「去 URL/邮箱」；**仍须**传 `separator`，脚本用 `<<NEWS_ITEM>>` 与正文一致，先按篇分界，减少正文里 `\n\n` 乱切。
+- 若需改回纯自定义：**`COZE_CHUNK_MODE=custom`**（`chunk_type: 0`，无上述清洗）。
+- **`CHUNK_MAX_TOKENS`**：单段上限（`.env.example` 默认 **5000**，你可调到更大以减少篇内再切）。
 
 ### 控制台里「知识库是空的」但脚本显示已上传
 

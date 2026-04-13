@@ -25,6 +25,24 @@ export async function uploadTextDocument(params: {
   const maxTokens = params.chunkMaxTokens ?? cfg.chunkMaxTokens;
   const client = getClient();
   const fileBase64 = Buffer.from(params.text, 'utf-8').toString('base64');
+
+  /** chunk_type=1 时接口仍要求传 separator；与正文用同一分界，避免仅用 \\n\\n 在篇内乱切 */
+  const chunkStrategy =
+    cfg.cozeChunkMode === 'auto'
+      ? {
+          chunk_type: 1,
+          separator: NEWS_CHUNK_SEPARATOR,
+          max_tokens: maxTokens,
+          remove_extra_spaces: true,
+          remove_urls_emails: true,
+        }
+      : {
+          chunk_type: 0,
+          separator: NEWS_CHUNK_SEPARATOR,
+          max_tokens: maxTokens,
+          remove_extra_spaces: false,
+        };
+
   const created = await client.datasets.documents.create({
     dataset_id: params.datasetId,
     document_bases: [
@@ -36,13 +54,7 @@ export async function uploadTextDocument(params: {
         },
       },
     ],
-    // 与 buildCorpus 的 NEWS_CHUNK_SEPARATOR 对齐先按篇切；max_tokens 过大仍会在超长单篇内再切。
-    chunk_strategy: {
-      chunk_type: 0,
-      separator: NEWS_CHUNK_SEPARATOR,
-      max_tokens: maxTokens,
-      remove_extra_spaces: false,
-    },
+    chunk_strategy: chunkStrategy,
   });
   return created;
 }

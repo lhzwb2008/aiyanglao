@@ -61,6 +61,8 @@ export type AppConfig = {
    * 默认拉高以减少篇内二次切分（若扣子接口报错可改小）。
    */
   chunkMaxTokens: number;
+  /** auto：chunk_type=1（自动分段+清洗，对齐控制台「自动分段与清洗」）；custom：chunk_type=0 纯自定义分隔符 */
+  cozeChunkMode: 'auto' | 'custom';
 };
 
 export function loadConfig(): AppConfig {
@@ -93,10 +95,12 @@ export function loadConfig(): AppConfig {
     cozeApiBase: process.env.COZE_API_BASE || 'https://api.coze.cn',
 
     chunkMaxTokens: (() => {
-      const raw = parseInt(process.env.CHUNK_MAX_TOKENS || '32000', 10);
-      const n = Number.isFinite(raw) && raw > 0 ? raw : 32000;
+      const raw = parseInt(process.env.CHUNK_MAX_TOKENS || '5000', 10);
+      const n = Number.isFinite(raw) && raw > 0 ? raw : 5000;
       return Math.min(200000, Math.max(512, n));
     })(),
+
+    cozeChunkMode: (process.env.COZE_CHUNK_MODE || 'auto').toLowerCase() === 'custom' ? 'custom' : 'auto',
   };
 }
 

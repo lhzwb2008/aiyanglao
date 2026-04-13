@@ -24,6 +24,10 @@ See `README.md` for full details.
 - **Style**: 各类 `.env` / `.env.example` 使用**纯键值**，**不写注释**；变量含义与排错见 `README.md` 对应小节。
 - **`server/.env`**: 主站后端与知识图谱；**`news-sync-service/.env`**: 融媒同步专用，勿混用。
 
+### News sync Coze 分段
+
+- 默认 `COZE_CHUNK_MODE=auto`：`chunk_type=1`（自动分段与清洗）。改纯自定义：`COZE_CHUNK_MODE=custom`。
+
 ### News sync crontab（改时间）
 
 - 定时任务由 **`news-sync-service/run-cron.sh`** 执行；`CRON_SCHEDULE` 仅在执行 **`npm run news-sync:setup`** **新写入** crontab 时生效。
