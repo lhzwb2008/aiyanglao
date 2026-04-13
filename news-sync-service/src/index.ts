@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, type AppConfig } from './env.js';
 import { htmlToPlainText } from './htmlToText.js';
 import { uploadTextDocument } from './cozeDataset.js';
+import { NEWS_CHUNK_SEPARATOR } from './newsChunk.js';
 import { appendSyncedIds, loadSyncedIdSet } from './syncedIds.js';
 import {
   formatDateTime,
@@ -27,43 +28,42 @@ function buildIncrementalDocName(): string {
   return `融媒增量-${y}${m}${day}-${hh}${mm}${ss}.txt`;
 }
 
-function buildCorpus(items: ManuscriptItem[]): string {
+/** 标题单行化，避免破坏「\n\n## 」分段边界 */
+function oneLine(s: string): string {
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+function buildArticleBlock(it: ManuscriptItem): string {
+  const title = oneLine(it.title || '(无标题)');
+  const summary = it.analysis?.summary?.trim() || '';
+  const tags = (it.analysis?.tags || []).join(', ');
+  const body = htmlToPlainText(it.content || '');
+
   const lines: string[] = [
-    '# 融媒稿件（增量）',
-    `生成时间: ${formatDateTime(new Date())}`,
-    `条数: ${items.length}`,
-    '',
-    '---',
-    '',
+    `## ${title}`,
+    `- 稿件ID: ${it.id}`,
+    `- 发布时间: ${it.publishAt}`,
   ];
-
-  for (const it of items) {
-    const summary = it.analysis?.summary?.trim() || '';
-    const tags = (it.analysis?.tags || []).join(', ');
-    const body = htmlToPlainText(it.content || '');
-
-    lines.push(`## ${it.title}`);
-    lines.push(`- 稿件ID: ${it.id}`);
-    lines.push(`- 发布时间: ${it.publishAt}`);
-    if (it.source) lines.push(`- 栏目: ${it.source}`);
-    if (it.sourceName) lines.push(`- 来源: ${it.sourceName}`);
-    if (it.analysis?.classification) lines.push(`- 分类: ${it.analysis.classification}`);
-    if (tags) lines.push(`- 标签: ${tags}`);
-    if (it.url) lines.push(`- 链接: ${it.url}`);
-    lines.push('');
-    if (summary) {
-      lines.push('摘要:');
-      lines.push(summary);
-      lines.push('');
-    }
-    lines.push('正文:');
-    lines.push(body || '(无正文)');
-    lines.push('');
-    lines.push('---');
+  if (it.source) lines.push(`- 栏目: ${it.source}`);
+  if (it.sourceName) lines.push(`- 来源: ${it.sourceName}`);
+  if (it.analysis?.classification) lines.push(`- 分类: ${it.analysis.classification}`);
+  if (tags) lines.push(`- 标签: ${tags}`);
+  if (it.url) lines.push(`- 链接: ${it.url}`);
+  lines.push('');
+  if (summary) {
+    lines.push('摘要:');
+    lines.push(summary);
     lines.push('');
   }
-
+  lines.push('正文:');
+  lines.push(body || '(无正文)');
   return lines.join('\n');
+}
+
+function buildCorpus(items: ManuscriptItem[]): string {
+  const preamble = `【融媒增量】生成时间 ${formatDateTime(new Date())} | 条数 ${items.length}`;
+  const blocks = [preamble, ...items.map(buildArticleBlock)];
+  return blocks.join(NEWS_CHUNK_SEPARATOR);
 }
 
 async function fetchAllPages(config: AppConfig): Promise<ManuscriptItem[]> {

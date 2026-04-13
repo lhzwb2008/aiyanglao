@@ -1,5 +1,6 @@
 import { CozeAPI, COZE_CN_BASE_URL, type DocumentInfo } from '@coze/api';
 import { loadConfig } from './env.js';
+import { NEWS_CHUNK_SEPARATOR } from './newsChunk.js';
 
 function getClient(): CozeAPI {
   const config = loadConfig();
@@ -31,10 +32,12 @@ export async function uploadTextDocument(params: {
         },
       },
     ],
+    // 与 buildCorpus 使用 NEWS_CHUNK_SEPARATOR 对齐，按篇切段；勿再用「\n\n」以免正文空行乱切。
     chunk_strategy: {
       chunk_type: 0,
-      separator: '\n\n',
-      max_tokens: 800,
+      separator: NEWS_CHUNK_SEPARATOR,
+      max_tokens: 2000,
+      remove_extra_spaces: false,
     },
   });
   return created;

@@ -128,6 +128,12 @@ grep -i error ~/aiyanglao/news-sync-service/logs/sync.log
 
 **在终端手动执行** `npm run news-sync` / `news-sync:setup` 时，日志默认只在当前终端，**不会**自动写入 `sync.log`。若也要落盘，可自行：`npm run news-sync >> news-sync-service/logs/manual.log 2>&1`。
 
+**前台 vs crontab**：在 SSH 里跑 `npm run news-sync` 是**前台进程**，关掉终端或按 **Ctrl+C** 会中断本次同步；**不会**关掉系统里的 crontab。定时任务由 **`cron` 守护进程**在后台调 `run-cron.sh`，与当前是否登录 SSH **无关**。长时间手工同步可：`cd news-sync-service && nohup npm run sync >> logs/manual.log 2>&1 &`。
+
+### 知识库分段（扣子侧）
+
+上传的 txt 使用**自定义分段**：以 `###NEWS_ITEM###` 为界，**每条稿件一个分段**（首段为单行元数据），避免原先按「双换行」切把正文拆碎。若仍见异常，在扣子知识库里检查该文档的「分段方式」是否为自定义且与最新上传一致。
+
 ### 「重启」说明
 
 - 无常驻进程；**改 `.env` 后**定时仍由 cron 调 `run-cron.sh`，若需立刻生效可再执行 `npm run news-sync`。
