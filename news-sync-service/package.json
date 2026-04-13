@@ -11,6 +11,7 @@
     "clear-synced-ids": "tsx src/clearSyncedIdsCli.ts",
     "probe:variants": "tsx src/probeGatewayVariants.ts",
     "probe:sample": "tsx src/probeSampleFields.ts",
+    "list-dataset": "tsx src/listDatasetDocs.ts",
     "start": "npm run setup"
   },
   "dependencies": {

@@ -66,20 +66,45 @@ function buildCorpus(items: ManuscriptItem[]): string {
   return blocks.join(NEWS_CHUNK_SEPARATOR);
 }
 
-async function fetchAllPages(config: AppConfig): Promise<ManuscriptItem[]> {
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
+export type RunSyncOptions = {
+  /**
+   * full_window：始终按 SYNC_DAYS + 当天 23:59 截止（用于 purge 后全量重拉）。
+   * default：若本地从未同步过且未禁用 FIRST_SYNC_TODAY_ONLY，则首次为「今日 00:00 ~ 当前时间」。
+   */
+  range?: 'default' | 'full_window';
+};
 
-  const start = new Date(end);
-  start.setDate(start.getDate() - (config.syncDays - 1));
-  start.setHours(0, 0, 0, 0);
+async function fetchAllPages(
+  config: AppConfig,
+  firstTodayOnly: boolean
+): Promise<ManuscriptItem[]> {
+  let end: Date;
+  let start: Date;
+
+  if (firstTodayOnly) {
+    end = new Date();
+    start = new Date();
+    start.setHours(0, 0, 0, 0);
+  } else {
+    end = new Date();
+    end.setHours(23, 59, 59, 999);
+    start = new Date(end);
+    start.setDate(start.getDate() - (config.syncDays - 1));
+    start.setHours(0, 0, 0, 0);
+  }
 
   const beginAt = formatDateTime(start);
   const endAt = formatDateTime(end);
 
-  console.log(
-    `时间范围: ${beginAt} ~ ${endAt}（最近 ${config.syncDays} 个自然日至今天；重复 ID 不会上传）`
-  );
+  if (firstTodayOnly) {
+    console.log(
+      `时间范围: ${beginAt} ~ ${endAt}（首次同步：今日 00:00 ~ 当前时间；重复 ID 不会上传）`
+    );
+  } else {
+    console.log(
+      `时间范围: ${beginAt} ~ ${endAt}（最近 ${config.syncDays} 个自然日至今天 23:59；重复 ID 不会上传）`
+    );
+  }
   if (config.queryMode === 'street') {
     console.log(`查询模式: 按街镇 locations=${config.locations}`);
   } else {
@@ -136,13 +161,23 @@ async function fetchAllPages(config: AppConfig): Promise<ManuscriptItem[]> {
   return collected;
 }
 
-export async function runSync(): Promise<void> {
+export async function runSync(opts?: RunSyncOptions): Promise<void> {
   const config = loadConfig();
   const synced = loadSyncedIdSet();
   console.log(`本地已记录已同步稿件数: ${synced.size}`);
 
+  const firstTodayEnabled = (process.env.FIRST_SYNC_TODAY_ONLY ?? '1') !== '0';
+  const useFirstToday =
+    opts?.range !== 'full_window' &&
+    synced.size === 0 &&
+    firstTodayEnabled;
+
+  if (useFirstToday) {
+    console.log('首次同步：使用时间窗「今日 00:00 ~ 当前时间」（可在 .env 设 FIRST_SYNC_TODAY_ONLY=0 改为直接按 SYNC_DAYS）');
+  }
+
   console.log('开始拉取融媒稿件…');
-  const items = await fetchAllPages(config);
+  const items = await fetchAllPages(config, useFirstToday);
   if (items.length === 0) {
     console.log(
       '【未写入知识库】融媒接口在本时间窗内返回 0 条稿件，已跳过上传（不是 Coze 报错）。'
@@ -170,10 +205,18 @@ export async function runSync(): Promise<void> {
     fileName: docName,
     text: corpus,
   });
-  console.log(
-    '上传完成:',
-    uploaded.map((u) => ({ name: u.name, document_id: u.document_id, status: u.status }))
-  );
+  const u0 = uploaded[0];
+  console.log('上传完成:', {
+    name: u0?.name,
+    document_id: u0?.document_id,
+    status: u0?.status,
+    size: u0?.size,
+    slice_count: u0?.slice_count,
+    char_count: u0?.char_count,
+  });
+  if (!u0?.document_id) {
+    throw new Error('Coze 未返回 document_id，请检查令牌与 dataset 权限');
+  }
 
   appendSyncedIds(newItems.map((i) => i.id));
   console.log(`已记录 ${newItems.length} 个稿件 ID 到 data/synced_ids.json`);

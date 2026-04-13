@@ -12,6 +12,11 @@ const envInCwd = path.resolve(process.cwd(), '.env');
 dotenv.config({ path: envInPackage });
 dotenv.config({ path: envInCwd });
 
+/** 未设置 TZ 时默认上海，保证「今日 00:00」与 crontab 预期一致 */
+if (!process.env.TZ) {
+  process.env.TZ = 'Asia/Shanghai';
+}
+
 function req(name: string): string {
   const v = process.env[name];
   if (!v) {
@@ -51,6 +56,11 @@ export type AppConfig = {
   cozeToken: string;
   cozeDatasetId: string;
   cozeApiBase: string;
+  /**
+   * 知识库自定义分段：在分隔符切开后，单段仍受 max_tokens 限制；过小会在「单篇内」再切，表现为有的整篇、有的碎段。
+   * 默认拉高以减少篇内二次切分（若扣子接口报错可改小）。
+   */
+  chunkMaxTokens: number;
 };
 
 export function loadConfig(): AppConfig {
@@ -81,10 +91,16 @@ export function loadConfig(): AppConfig {
     cozeToken: req('COZE_API_TOKEN'),
     cozeDatasetId: req('COZE_DATASET_ID'),
     cozeApiBase: process.env.COZE_API_BASE || 'https://api.coze.cn',
+
+    chunkMaxTokens: (() => {
+      const raw = parseInt(process.env.CHUNK_MAX_TOKENS || '32000', 10);
+      const n = Number.isFinite(raw) && raw > 0 ? raw : 32000;
+      return Math.min(200000, Math.max(512, n));
+    })(),
   };
 }
 
-/** crontab 五段式，默认每天凌晨 2 点；仅 setup 脚本使用 */
+/** crontab 五段式，默认每天 8:00（上海业务常见）；仅 setup 脚本使用 */
 export function getCronSchedule(): string {
-  return (process.env.CRON_SCHEDULE || '0 2 * * *').trim();
+  return (process.env.CRON_SCHEDULE || '0 8 * * *').trim();
 }

@@ -51,7 +51,7 @@ npm run dev
    cp news-sync-service/.env.example news-sync-service/.env
    ```
 
-2. 在 `news-sync-service/.env` 中填写网关与 Coze 等变量，说明见 `.env.example`。可选 **`CRON_SCHEDULE`**（五段式，默认 `0 2 * * *`），仅用于下方「一键安装定时任务」。
+2. 在 `news-sync-service/.env` 中填写网关与 Coze 等变量，说明见 `.env.example`。可选 **`CRON_SCHEDULE`**（五段式，默认 **`0 8 * * *`** 每天 8:00），仅用于「一键安装定时任务」。**已装过旧 cron（如凌晨 2 点）不会自动改**，需 `crontab -e` 改时间或删掉旧行后重新 `news-sync:setup`。
 
 3. 安装依赖：仓库根目录 `npm run install:all`，或 `cd news-sync-service && npm install`。
 
@@ -75,7 +75,9 @@ npm run news-sync:setup
 
 1. **幂等**检查当前用户 `crontab`：若已存在指向本目录 **`run-cron.sh`** 的一行，则**不再追加**。
 2. 否则写入一行：`$CRON_SCHEDULE /bin/bash <本目录绝对路径>/run-cron.sh`。
-3. **立刻**再执行一次 `npm run sync`（拉取自上次以来未同步的稿件，见 `data/synced_ids.json`）。
+3. **立刻**再执行一次 `npm run sync`（见下方「首次同步时间窗」）。
+
+**首次同步时间窗**：本地 **`data/synced_ids.json` 为空**且 **`FIRST_SYNC_TODAY_ONLY` 未设为 `0`** 时，只拉 **当日 0 点～当前时间** 的稿件（便于当天就有可检索内容）；第二次起按 **`SYNC_DAYS`** 拉「最近若干天至当天 23:59」。时区默认 **`Asia/Shanghai`**（`run-cron.sh` 与进程内均已处理）。**`purge-and-resync`** 清空后会按 **完整 `SYNC_DAYS` 窗口**拉取，不会只用「今天」。
 
 之后改调度只需编辑 `.env` 里的 `CRON_SCHEDULE` 并**再执行一次** `npm run news-sync:setup`（会先检测到已有 `run-cron.sh` 任务而跳过重复行；若需更新 cron 表达式，请先 `crontab -e` 删掉旧行或含 `# aiyanglao-news-sync-service` 的块，再运行 setup）。更省事可直接 `crontab -e` 改时间。
 
@@ -132,7 +134,13 @@ grep -i error ~/aiyanglao/news-sync-service/logs/sync.log
 
 ### 知识库分段（扣子侧）
 
-上传的 txt 使用**自定义分段**：以 `###NEWS_ITEM###` 为界，**每条稿件一个分段**（首段为单行元数据），避免原先按「双换行」切把正文拆碎。若仍见异常，在扣子知识库里检查该文档的「分段方式」是否为自定义且与最新上传一致。
+上传的 txt 使用**自定义分段**：以 `<<NEWS_ITEM>>` 为界先按篇切开；**此外**扣子仍会用 `max_tokens`（环境变量 **`CHUNK_MAX_TOKENS`**，默认 **32000**）限制单段长度——若设得太小（例如 2000），**长稿会在一篇内被再切几段**，看起来就像「有的按篇、有的切碎」。极长正文仍可能超过上限，属平台限制；可再调大 `CHUNK_MAX_TOKENS` 试到接口接受的上限。旧文件若仍显示 `###NEWS_ITEM###` 等，需删文档后重新同步生成新文件。
+
+### 控制台里「知识库是空的」但脚本显示已上传
+
+1. **核对 `COZE_DATASET_ID`**：须与浏览器地址栏里该知识库 URL 中 `knowledge/` 后的数字**完全一致**；`COZE_API_TOKEN` 须为能访问该空间的令牌（PAT/服务令牌）。
+2. **用 API 列文档**（与脚本同一 `.env`）：在仓库根目录执行 `npm run news-sync:list-dataset`，应能看到 `融媒增量-*.txt`。若这里有而网页没有，多半是**登错空间/看错知识库**；若这里也没有，说明**未上传成功或未跑完**（勿在「上传完成」前 `Ctrl+C`）。
+3. 大文件入库后，控制台可能**延迟几秒再出分段**，刷新页面后再看。
 
 ### 「重启」说明
 

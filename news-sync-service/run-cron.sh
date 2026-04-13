@@ -14,6 +14,9 @@ fi
 
 export PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
+# 「今天」按上海日期计算（可被 .env 中 TZ= 覆盖）
+export TZ="${TZ:-Asia/Shanghai}"
+
 # 若使用 nvm 安装 Node，取消下面两行注释
 # export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 # [[ -s "$NVM_DIR/nvm.sh" ]] && source "$NVM_DIR/nvm.sh"

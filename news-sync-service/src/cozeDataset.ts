@@ -18,7 +18,11 @@ export async function uploadTextDocument(params: {
   datasetId: string;
   fileName: string;
   text: string;
+  /** 不传则从 loadConfig() 读取 CHUNK_MAX_TOKENS */
+  chunkMaxTokens?: number;
 }): Promise<DocumentInfo[]> {
+  const cfg = loadConfig();
+  const maxTokens = params.chunkMaxTokens ?? cfg.chunkMaxTokens;
   const client = getClient();
   const fileBase64 = Buffer.from(params.text, 'utf-8').toString('base64');
   const created = await client.datasets.documents.create({
@@ -32,11 +36,11 @@ export async function uploadTextDocument(params: {
         },
       },
     ],
-    // 与 buildCorpus 使用 NEWS_CHUNK_SEPARATOR 对齐，按篇切段；勿再用「\n\n」以免正文空行乱切。
+    // 与 buildCorpus 的 NEWS_CHUNK_SEPARATOR 对齐先按篇切；max_tokens 过大仍会在超长单篇内再切。
     chunk_strategy: {
       chunk_type: 0,
       separator: NEWS_CHUNK_SEPARATOR,
-      max_tokens: 2000,
+      max_tokens: maxTokens,
       remove_extra_spaces: false,
     },
   });

@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   clearSyncedIds();
   console.log('已清空 news-sync-service/data/synced_ids.json');
 
-  await runSync();
+  await runSync({ range: 'full_window' });
 }
 
 main().catch((e) => {
