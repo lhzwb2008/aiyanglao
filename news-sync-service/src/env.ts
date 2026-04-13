@@ -82,3 +82,8 @@ export function loadConfig(): AppConfig {
     cozeApiBase: process.env.COZE_API_BASE || 'https://api.coze.cn',
   };
 }
+
+/** crontab 五段式，默认每天凌晨 2 点；仅 setup 脚本使用 */
+export function getCronSchedule(): string {
+  return (process.env.CRON_SCHEDULE || '0 2 * * *').trim();
+}

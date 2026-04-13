@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# 供 crontab 调用：cd 到项目目录、加载常见 PATH / nvm、执行 npm run sync
+# 供 crontab 调用：在本目录执行 npm run sync，日志写入 logs/sync.log。
+# 安装定时任务：在 news-sync-service 目录执行 npm run setup（或仓库根目录 npm run news-sync:setup），
+# 会幂等写入 crontab 并立即同步一次；无需手敲 crontab 行。
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"

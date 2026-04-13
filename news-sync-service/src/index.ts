@@ -132,7 +132,7 @@ async function fetchAllPages(config: AppConfig): Promise<ManuscriptItem[]> {
   return collected;
 }
 
-async function runSync(): Promise<void> {
+export async function runSync(): Promise<void> {
   const config = loadConfig();
   const synced = loadSyncedIdSet();
   console.log(`本地已记录已同步稿件数: ${synced.size}`);

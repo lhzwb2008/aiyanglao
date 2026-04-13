@@ -39,3 +39,23 @@ export async function uploadTextDocument(params: {
   });
   return created;
 }
+
+/** 分页列出并批量删除，直到知识库内无文档为止 */
+export async function deleteAllDocumentsInDataset(datasetId: string): Promise<number> {
+  const client = getClient();
+  let deleted = 0;
+  for (;;) {
+    const data = await client.datasets.documents.list({
+      dataset_id: datasetId,
+      page: 1,
+      page_size: 100,
+    });
+    const infos = data.document_infos || [];
+    if (infos.length === 0) break;
+    const ids = infos.map((d) => d.document_id);
+    await client.datasets.documents.delete({ document_ids: ids });
+    deleted += ids.length;
+    console.log(`已删除 ${ids.length} 个文件（累计 ${deleted}）…`);
+  }
+  return deleted;
+}

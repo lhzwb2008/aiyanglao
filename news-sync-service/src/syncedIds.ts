@@ -29,3 +29,9 @@ export function appendSyncedIds(newIds: string[]): void {
   fs.mkdirSync(path.dirname(storePath), { recursive: true });
   fs.writeFileSync(storePath, JSON.stringify({ ids: merged }, null, 0), 'utf-8');
 }
+
+/** 清空本地已同步稿件记录（与清空知识库配合做全量重拉） */
+export function clearSyncedIds(): void {
+  fs.mkdirSync(path.dirname(storePath), { recursive: true });
+  fs.writeFileSync(storePath, JSON.stringify({ ids: [] }, null, 0), 'utf-8');
+}

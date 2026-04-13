@@ -39,6 +39,61 @@ npm run dev
 
 访问 http://localhost:5173 即可查看知识图谱。
 
+## 新闻同步（news-sync-service）
+
+从**融媒网关**按时间窗拉取稿件，按稿件 ID 去重后，将**增量**合并成文本并上传到 **Coze 知识库**。定时任务由 **`run-cron.sh`** 执行（`npm run sync`，日志在 `news-sync-service/logs/sync.log`），**不要**在 crontab 里手抄长命令。
+
+### 配置
+
+1. 复制环境变量（与根目录 `server/.env` **分开**）：
+
+   ```bash
+   cp news-sync-service/.env.example news-sync-service/.env
+   ```
+
+2. 在 `news-sync-service/.env` 中填写网关与 Coze 等变量，说明见 `.env.example`。可选 **`CRON_SCHEDULE`**（五段式，默认 `0 2 * * *`），仅用于下方「一键安装定时任务」。
+
+3. 安装依赖：仓库根目录 `npm run install:all`，或 `cd news-sync-service && npm install`。
+
+### 推荐：安装定时任务并立即同步一次
+
+在 **`news-sync-service` 目录**执行 `npm run setup`（或 `npm start`，等价），或在**仓库根目录**执行：
+
+```bash
+npm run news-sync:setup
+```
+
+行为：
+
+1. **幂等**检查当前用户 `crontab`：若已存在指向本目录 **`run-cron.sh`** 的一行，则**不再追加**。
+2. 否则写入一行：`$CRON_SCHEDULE /bin/bash <本目录绝对路径>/run-cron.sh`。
+3. **立刻**再执行一次 `npm run sync`（拉取自上次以来未同步的稿件，见 `data/synced_ids.json`）。
+
+之后改调度只需编辑 `.env` 里的 `CRON_SCHEDULE` 并**再执行一次** `npm run news-sync:setup`（会先检测到已有 `run-cron.sh` 任务而跳过重复行；若需更新 cron 表达式，请先 `crontab -e` 删掉旧行或含 `# aiyanglao-news-sync-service` 的块，再运行 setup）。更省事可直接 `crontab -e` 改时间。
+
+### 仅手动跑一轮（不装 cron）
+
+```bash
+npm run news-sync
+```
+
+### 清空知识库并重新拉取（换筛选条件/全量重来）
+
+会删除 **`COZE_DATASET_ID` 对应知识库中的全部文件**，并清空本地 `synced_ids.json`，再执行与 `sync` 相同的逻辑。**务必确认 dataset 无误。**
+
+```bash
+cd news-sync-service && CONFIRM_PURGE=1 npm run purge-and-resync
+```
+
+或根目录：`CONFIRM_PURGE=1 npm run news-sync:purge-and-resync`。
+
+说明：融媒接口按时间窗查询，单次同步覆盖**最近 `SYNC_DAYS` 个自然日**；若要更长历史，可临时增大 `SYNC_DAYS` 或分多次跑。
+
+### 「重启」说明
+
+- 无常驻进程；**改 `.env` 后**定时仍由 cron 调 `run-cron.sh`，若需立刻生效可再执行 `npm run news-sync`。
+- 若 cron 里 `npm` 找不到，在 **`run-cron.sh`** 中取消 **nvm** 相关注释，或保证系统 PATH 含 Node。
+
 ## 功能
 
 - 从 Coze 知识库自动抽取文档中的实体和关系
@@ -69,5 +124,6 @@ npm run dev
 │           ├── cozeApi.ts             # Coze API 服务
 │           ├── graphStore.ts          # 图谱本地存储
 │           └── knowledgeExtractor.ts  # 知识抽取引擎
+├── news-sync-service/  # 融媒 → Coze 知识库增量同步（见上文「新闻同步」）
 └── package.json
 ```
